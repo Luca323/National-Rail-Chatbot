@@ -1,4 +1,3 @@
-import os
 import requests
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
@@ -16,27 +15,46 @@ class NationalRailAPI:
     def get_journey(self, origin_crs: str, destination_crs: str, datetime_str: str):
         #Take origin, destination and datetime and perform lookup on SOAP API
 
-        envelope = f"""<?xml version="1.0" encoding="UTF-8"?>
-                        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-                                          xmlns:ojp="http://www.thalesgroup.com/ojp/jpservices"
-                                          xmlns:common="http://www.thalesgroup.com/ojp/common">
-                          <soapenv:Header/>
-                          <soapenv:Body>
-                            <ojp:RealtimeJourneyPlanRequest>
-                              <ojp:origin>
-                                <common:stationCRS>{origin_crs}</common:stationCRS>
-                              </ojp:origin>
-                              <ojp:destination>
-                                <common:stationCRS>{destination_crs}</common:stationCRS>
-                              </ojp:destination>
-                              <ojp:realtimeEnquiry>STANDARD</ojp:realtimeEnquiry>
-                              <ojp:outwardTime>
-                                <ojp:departBy>{datetime_str}</ojp:departBy>
-                              </ojp:outwardTime>
-                              <ojp:directTrains>false</ojp:directTrains>
-                            </ojp:RealtimeJourneyPlanRequest>
-                          </soapenv:Body>
-                        </soapenv:Envelope>"""
+        adults = 1
+        children = 0
+        envelope = envelope = f"""<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:jpd="http://www.thalesgroup.com/ojp/jpdlr"
+                  xmlns:com="http://www.thalesgroup.com/ojp/common">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <jpd:RealtimeJourneyPlanRequest>
+
+      <jpd:origin>
+        <com:stationCRS>{origin_crs}</com:stationCRS>
+      </jpd:origin>
+
+      <jpd:destination>
+        <com:stationCRS>{destination_crs}</com:stationCRS>
+      </jpd:destination>
+
+      <jpd:realtimeEnquiry>STANDARD</jpd:realtimeEnquiry>
+
+      <jpd:outwardTime>
+        <jpd:departBy>{datetime_str}</jpd:departBy>
+      </jpd:outwardTime>
+
+      <jpd:directTrains>false</jpd:directTrains>
+
+      <jpd:fareRequestDetails>
+        <jpd:passengers>
+          <com:adult>{adults}</com:adult>
+          <com:child>{children}</com:child>
+        </jpd:passengers>
+        <jpd:fareClass>STANDARD</jpd:fareClass>
+      </jpd:fareRequestDetails>
+
+      <jpd:includeAdditionalInformation>true</jpd:includeAdditionalInformation>
+
+    </jpd:RealtimeJourneyPlanRequest>
+  </soapenv:Body>
+</soapenv:Envelope>
+"""
 
         response = requests.post(
             self.url,
@@ -49,47 +67,60 @@ class NationalRailAPI:
 
     @staticmethod
     def parse_journeys(xml_string):
-        #Take XML response and return data in readable format
+        import xml.etree.ElementTree as ET
 
         ns = {
             'soap': 'http://schemas.xmlsoap.org/soap/envelope/',
-            'ns2': 'http://www.thalesgroup.com/ojp/jpservices',
+            'ns2': 'http://www.thalesgroup.com/ojp/jpdlr',
             'ns3': 'http://www.thalesgroup.com/ojp/common'
         }
 
         root = ET.fromstring(xml_string)
-
         journeys = []
 
         for journey in root.findall('.//ns2:outwardJourney', ns):
-            dep = journey.find('.//ns2:scheduled/ns2:departure', ns)
-            arr = journey.find('.//ns2:scheduled/ns2:arrival', ns)
+
+            dep = journey.find('.//ns2:timetable/ns2:scheduled/ns2:departure', ns)
+            arr = journey.find('.//ns2:timetable/ns2:scheduled/ns2:arrival', ns)
 
             legs = journey.findall('.//ns2:leg', ns)
 
-            num_changes = len([l for l in legs if l.find('ns2:mode', ns).text == 'TRAIN']) - 1
+            # Count changes
+            train_legs = [l for l in legs if l.find('ns2:mode', ns).text == 'TRAIN']
+            num_changes = max(len(train_legs) - 1, 0)
 
-            journey_info = {
-                "departure": dep.text if dep is not None else None,
-                "arrival": arr.text if arr is not None else None,
-                "changes": max(num_changes, 0),
-                "legs": []
-            }
+            #structure the fares
+            fares = []
+            for fare in journey.findall('ns2:fare', ns):
+                price = fare.find('ns3:totalPrice', ns)
+                desc = fare.find('ns3:description', ns)
 
+                fares.append({
+                    "description": desc.text if desc is not None else None,
+                    "price_pence": int(price.text) if price is not None else None                })
+
+            # Journey legs
+            parsed_legs = []
             for leg in legs:
-                journey_info["legs"].append({
-                    "from": leg.find('ns2:board', ns).text,
-                    "to": leg.find('ns2:alight', ns).text,
-                    "mode": leg.find('ns2:mode', ns).text
+                parsed_legs.append({
+                    "from": leg.find('ns2:board/ns2:crsCode', ns).text,
+                    "to": leg.find('ns2:alight/ns2:crsCode', ns).text,
+                    "mode": leg.find('ns2:mode', ns).text,
                 })
 
-            journeys.append(journey_info)
+            journeys.append({
+                "departure": dep.text if dep is not None else None,
+                "arrival": arr.text if arr is not None else None,
+                "changes": num_changes,
+                "fares": fares,  # just return all fares as-is
+                "legs": parsed_legs
+            })
 
         return journeys
 
 
 if __name__ == "__main__":
     api = NationalRailAPI()
-    response = api.get_journey("LST", "NRW", "2026-04-05T10:00:00")
+    response = api.get_journey("LST", "NRW", "2026-04-08T10:00:00")
 
     print(api.parse_journeys(response))
