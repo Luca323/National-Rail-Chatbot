@@ -12,12 +12,10 @@ class NationalRailAPI:
             "SOAPAction": "",
         }
 
-    def get_journey(self, origin_crs: str, destination_crs: str, datetime_str: str):
+    def get_journey(self, origin_crs: str, destination_crs: str, datetime_str: str, adults: int = 1, children: int = 0):
         #Take origin, destination and datetime and perform lookup on SOAP API
 
-        adults = 1
-        children = 0
-        envelope = envelope = f"""<?xml version="1.0" encoding="UTF-8"?>
+        envelope = f"""<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:jpd="http://www.thalesgroup.com/ojp/jpdlr"
                   xmlns:com="http://www.thalesgroup.com/ojp/common">
@@ -121,6 +119,6 @@ class NationalRailAPI:
 
 if __name__ == "__main__":
     api = NationalRailAPI()
-    response = api.get_journey("LST", "NRW", "2026-04-08T10:00:00")
+    response = api.get_journey("LST", "NRW", "2026-04-14T10:00:00")
 
     print(api.parse_journeys(response))
