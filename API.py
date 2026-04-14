@@ -116,9 +116,54 @@ class NationalRailAPI:
 
         return journeys
 
+class LlamaWrapper:
+    def __init__(self, base_url="http://localhost:8080"):
+        self.url = f"{base_url}/completion"
+
+    def generate(self, prompt, max_tokens=200, temperature=0.7):
+        payload = {
+            "prompt": prompt,
+            "n_predict": max_tokens,
+            "temperature": temperature,
+            "top_p": 0.9,
+            "stop": ["User:", "\n\n"]
+        }
+
+        response = requests.post(self.url, json=payload)
+
+        if response.status_code != 200:
+            raise Exception(f"LLM error: {response.text}")
+
+        data = response.json()
+        return data.get("content", "").strip()
+
 
 if __name__ == "__main__":
-    api = NationalRailAPI()
+
+    llama = LlamaWrapper()
+
+    #Example for how to use LLM prompt formatting, the model I've downloaded is lightweight so be specific
+    prompt = '''
+    You are a helpful train assistant.
+
+    Use ONLY the provided data to answer the question.
+    
+    Data:
+    free train to Norwich at tomorrow at 14:00.
+    free train to Norwich at tomorrow at 15:00.
+    free train to Norwich at tomorrow at 17:00.
+    
+    
+    User: When is the next train to Norwich?
+    Assistant:
+    '''
+
+    response = llama.generate(prompt)
+
+    print(response)
+
+
+    '''api = NationalRailAPI()
     response = api.get_journey("LST", "NRW", "2026-04-14T10:00:00")
 
-    print(api.parse_journeys(response))
+    print(api.parse_journeys(response))'''
