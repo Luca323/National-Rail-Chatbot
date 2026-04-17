@@ -1,0 +1,47 @@
+{
+    "greeting": {
+        "patterns": [
+            "hi",
+            "hello",
+            "hey"
+        ],
+        "responses": [
+            "Hello, how can I help you?",
+            "Hi, can can I assist you today?",
+            "Hey, what can I do for you today?"
+        ]
+    },
+    "goodbye": {
+        "patterns": [
+            "bye",
+            "goodbye"
+        ],
+        "responses": [
+            "Have a nice time, bye.",
+            "Thank you for using this service. Goodbye",
+            "Enjoy your journey!"
+        ]
+    },
+    "thanks": {
+        "patterns": [
+            "thanks",
+            "thank"
+        ],
+        "responses": [
+            "Happy to help!",
+            "No worries!",
+            "You're welcome",
+            "My pleasure",
+            "Any time!"
+        ]
+    },
+    "book": {
+        "patterns": [
+            "book",
+            "ticket"
+        ],
+        "response": [
+            "where do you want to travel from?"
+        ]
+    }
+}
