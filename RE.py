@@ -1,145 +1,25 @@
-import re
-from datetime import datetime, timedelta
 from API import NationalRailAPI, LlamaWrapper
-from NLPU import intention_by_keyword, extract_time_date, get_station, check_ticket, railcard_choice
+from NLPU import (intention_by_keyword, extract_time_date, extract_stations,
+                  check_ticket, railcard_choice, re,
+                  parse_time, parse_date, build_datetime)
 
 api = NationalRailAPI()
 llm = LlamaWrapper()
 
-MONTHS = ["january", "february", "march", "april", "may", "june",
-          "july", "august", "september", "october", "november", "december"]
 
 """
 functions to get the information that might be presented in the chatbot. Uses some of the NLPU functions but also has
 fallbacks on regex to get the information out
+
+
+Flow:
+1. Detect intent
+2. Extract entities
+3. Fill missing slots
+4. Ask user for missing info
+5. Confirm
+6. Call API
 """
-
-def parse_date(text: str) -> str | None:
-    t = text.lower().strip()
-    today = datetime.now()
-
-    if "tomorrow" in t:
-        return (today + timedelta(days=1)).strftime("%Y-%m-%d")
-    if "today" in t or "same day" in t:
-        return today.strftime("%Y-%m-%d")
-
-    for i, name in enumerate(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]):
-        if name in t:
-            days_ahead = (i - today.weekday()) % 7 or 7
-            return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
-
-    match = re.search(
-        r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(" + "|".join(MONTHS) + r")\s*(\d{4})?",
-        t, re.I
-    )
-    if match:
-        day, month_str, year = int(match.group(1)), match.group(2), match.group(3)
-        month = MONTHS.index(month_str.lower()) + 1
-        year = int(year) if year else today.year
-        try:
-            return datetime(year, month, day).strftime("%Y-%m-%d")
-        except ValueError:
-            return None
-
-    match = re.search(
-        r"(" + "|".join(MONTHS) + r")\s+(\d{1,2})(?:st|nd|rd|th)?\s*(\d{4})?",
-        t, re.I
-    )
-    if match:
-        month_str, day, year = match.group(1), int(match.group(2)), match.group(3)
-        month = MONTHS.index(month_str.lower()) + 1
-        year = int(year) if year else today.year
-        try:
-            return datetime(year, month, day).strftime("%Y-%m-%d")
-        except ValueError:
-            return None
-
-    match = re.search(r"(\d{4})-(\d{2})-(\d{2})", t)
-    if match:
-        return match.group(0)
-
-    return None
-
-
-def parse_time(text: str) -> str | None:
-    match = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text, re.I)
-    if match:
-        hour = int(match.group(1))
-        minute = int(match.group(2)) if match.group(2) else 0
-        meridiem = match.group(3).lower()
-        if meridiem == "pm" and hour != 12:
-            hour += 12
-        elif meridiem == "am" and hour == 12:
-            hour = 0
-        return f"{hour:02d}:{minute:02d}"
-
-    match = re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", text)
-    if match:
-        return f"{int(match.group(1)):02d}:{match.group(2)}"
-
-    return None
-
-
-def build_datetime(date_str: str, time_str: str) -> str:
-    time_parsed = parse_time(time_str or "")
-    if time_parsed:
-        hour, minute = int(time_parsed[:2]), int(time_parsed[3:])
-    else:
-        hour, minute = 10, 0
-
-    try:
-        base = datetime.strptime(date_str, "%Y-%m-%d")
-    except Exception:
-        base = datetime.now()
-
-    return base.replace(hour=hour, minute=minute, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
-
-def extract_stations(text, last_asked):
-    origin_crs, dest_crs = None, None
-
-    match = re.search(
-        r'\bfrom\b\s+(.+?)\s+\bto\b\s+(.+?)(?:\s+(?:on|at|tomorrow|next|\d)|$)',
-        text, re.I
-    )
-    if match:
-        try:
-            origin_crs = get_station(match.group(1).strip())
-        except Exception:
-            pass
-        try:
-            dest_crs = get_station(match.group(2).strip())
-        except Exception:
-            pass
-        return origin_crs, dest_crs
-
-    match = re.search(r'\bto\b\s+(.+?)(?:\s+(?:on|at|tomorrow|next|\d)|$)', text, re.I)
-    if match:
-        try:
-            dest_crs = get_station(match.group(1).strip())
-        except Exception:
-            pass
-
-    match = re.search(r'\bfrom\b\s+(.+?)(?:\s+(?:on|at|tomorrow|next|to|\d)|$)', text, re.I)
-    if match:
-        try:
-            origin_crs = get_station(match.group(1).strip())
-        except Exception:
-            pass
-
-    if not origin_crs and not dest_crs:
-        if last_asked == "origin":
-            try:
-                origin_crs = get_station(text)
-            except Exception:
-                pass
-        elif last_asked == "destination":
-            try:
-                dest_crs = get_station(text)
-            except Exception:
-                pass
-
-    return origin_crs, dest_crs
-
 
 #state of booking holding information. Essentially a data container to hold every piece of info collected
 
@@ -209,48 +89,9 @@ RAILCARD_PROMPT = (
     "(16-17, 16-25, 26-30, disabled, family & friends, network, senior, "
     "two together, veterans — or 'no')"
 )
-#this calls the API to look for the ticket and sorts the journeys by price and displays the best ones
 
-def search_and_present(state):
-    try:
-        xml = api.get_journey(
-            origin_crs=state.origin,
-            destination_crs=state.destination,
-            datetime_str=build_datetime(state.date, state.time),
-            adults=state.adults,
-            children=state.children,
-        )
-        journeys = NationalRailAPI.parse_journeys(xml)
-    except Exception as e:
-        return f"Sorry, I couldn't reach National Rail at the moment: {e}"
-
-    if not journeys:
-        return "I couldn't find any trains for that journey. Would you like to try a different time or date?"
-
-    def min_price(j):
-        fares = [f["price_pence"] for f in j.get("fares", []) if f.get("price_pence")]
-        return min(fares) if fares else float("inf")
-
-    journeys.sort(key=min_price)
-
-    lines = ["Here are the available trains:\n"]
-    for i, j in enumerate(journeys[:3], 1):
-        dep = j.get("departure", "?")[11:16]
-        arr = j.get("arrival", "?")[11:16]
-        c = j.get("changes", 0)
-        cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
-        p = min_price(j)
-        ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
-        lines.append(f"  {i}. Depart {dep}  →  Arrive {arr}  ({cs})  from {ps}")
-
-    p0 = min_price(journeys[0])
-    if p0 != float("inf"):
-        lines.append(f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} departure at £{p0 / 100:.2f}")
-
-    return "\n".join(lines)
 
 #This is the reasoning engine that manages the conversation
-
 class ReasoningEngine:
     def __init__(self):
         self.state = BookingState()
@@ -408,6 +249,45 @@ class ReasoningEngine:
         self.done = False
         self._last_asked = None
 
+#this calls the API to look for the ticket and sorts the journeys by price and displays the best ones
+
+def search_and_present(state):
+    try:
+        xml = api.get_journey(
+            origin_crs=state.origin,
+            destination_crs=state.destination,
+            datetime_str=build_datetime(state.date, state.time),
+            adults=state.adults,
+            children=state.children,
+        )
+        journeys = NationalRailAPI.parse_journeys(xml)
+    except Exception as e:
+        return f"Sorry, I couldn't reach National Rail at the moment: {e}"
+
+    if not journeys:
+        return "I couldn't find any trains for that journey. Would you like to try a different time or date?"
+
+    def min_price(j):
+        fares = [f["price_pence"] for f in j.get("fares", []) if f.get("price_pence")]
+        return min(fares) if fares else float("inf")
+
+    journeys.sort(key=min_price)
+
+    lines = ["Here are the available trains:\n"]
+    for i, j in enumerate(journeys[:3], 1):
+        dep = j.get("departure", "?")[11:16]
+        arr = j.get("arrival", "?")[11:16]
+        c = j.get("changes", 0)
+        cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
+        p = min_price(j)
+        ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
+        lines.append(f"  {i}. Depart {dep}  →  Arrive {arr}  ({cs})  from {ps}")
+
+    p0 = min_price(journeys[0])
+    if p0 != float("inf"):
+        lines.append(f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} departure at £{p0 / 100:.2f}")
+
+    return "\n".join(lines)
 
 if __name__ == "__main__":
     engine = ReasoningEngine()

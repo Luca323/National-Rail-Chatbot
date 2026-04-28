@@ -1,7 +1,6 @@
 import requests
 from requests.auth import HTTPBasicAuth
-from datetime import datetime
-import xml.etree.ElementTree as ET
+
 
 class NationalRailAPI:
     def __init__(self):
@@ -142,21 +141,34 @@ if __name__ == "__main__":
 
     llama = LlamaWrapper()
 
-    #Example for how to use LLM prompt formatting, the model I've downloaded is lightweight so be specific
-    prompt = '''
-    You are a helpful train assistant.
+    data = [
+        {"time": "19:00", "destination": "Norwich", "available": True},
+        {"time": "15:00", "destination": "Norwich", "available": True},
+        {"time": "13:00", "destination": "Norwich", "available": False},
+    ]
+    query = 'When is the next available train tomorrow?'
 
-    Use ONLY the provided data to answer the question.
+    #Example for how to use LLM prompt formatting, the model I've downloaded is lightweight so be specific
+    prompt = f'''
+    You are a train booking assistant.
+
+    Select the earliest AVAILABLE train to the requested destination.
     
-    Data:
-    free train to Norwich at tomorrow at 14:00.
-    free train to Norwich at tomorrow at 15:00.
-    free train to Norwich at tomorrow at 17:00.
+    Rules:
+    - Only consider trains where available = True
+    - Only consider trains matching the destination
+    - Return ONLY the time (HH:MM)
+    - Do not explain
     
+    DATA:
+    {data}
     
-    User: When is the next train to Norwich?
-    Assistant:
+    USER QUERY:
+    {query}
+    
+    ANSWER:
     '''
+
 
     response = llama.generate(prompt)
 

@@ -3,6 +3,10 @@ import json
 import random
 import pandas as pd
 from nltk import ngrams
+import re
+from datetime import datetime, timedelta
+
+
 
 import spacy
 import spacy.cli
@@ -10,8 +14,8 @@ import spacy.cli
 # spacy.cli.download("en_core_web_sm")
 nlp = spacy.load('en_core_web_sm')
 
-
-
+MONTHS = ["january", "february", "march", "april", "may", "june",
+          "july", "august", "september", "october", "november", "december"]
 
 def lem_and_clean(text):
     # lemmatize and clean a piece of text
@@ -101,6 +105,133 @@ def get_station(userInput):
     station_code = stations_df['CRS'].loc[stations_df['NAME'] == best_match.upper()].values[0]
     print(f"Station code: {station_code}")
     return station_code
+
+def extract_stations(text, last_asked):
+    origin_crs, dest_crs = None, None
+
+    match = re.search(
+        r'\bfrom\b\s+(.+?)\s+\bto\b\s+(.+?)(?:\s+(?:on|at|tomorrow|next|\d)|$)',
+        text, re.I
+    )
+    if match:
+        try:
+            origin_crs = get_station(match.group(1).strip())
+        except Exception:
+            pass
+        try:
+            dest_crs = get_station(match.group(2).strip())
+        except Exception:
+            pass
+        return origin_crs, dest_crs
+
+    match = re.search(r'\bto\b\s+(.+?)(?:\s+(?:on|at|tomorrow|next|\d)|$)', text, re.I)
+    if match:
+        try:
+            dest_crs = get_station(match.group(1).strip())
+        except Exception:
+            pass
+
+    match = re.search(r'\bfrom\b\s+(.+?)(?:\s+(?:on|at|tomorrow|next|to|\d)|$)', text, re.I)
+    if match:
+        try:
+            origin_crs = get_station(match.group(1).strip())
+        except Exception:
+            pass
+
+    if not origin_crs and not dest_crs:
+        if last_asked == "origin":
+            try:
+                origin_crs = get_station(text)
+            except Exception:
+                pass
+        elif last_asked == "destination":
+            try:
+                dest_crs = get_station(text)
+            except Exception:
+                pass
+
+    return origin_crs, dest_crs
+
+
+def parse_date(text: str) -> str | None:
+    t = text.lower().strip()
+    today = datetime.now()
+
+    if "tomorrow" in t:
+        return (today + timedelta(days=1)).strftime("%Y-%m-%d")
+    if "today" in t or "same day" in t:
+        return today.strftime("%Y-%m-%d")
+
+    for i, name in enumerate(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]):
+        if name in t:
+            days_ahead = (i - today.weekday()) % 7 or 7
+            return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+
+    match = re.search(
+        r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(" + "|".join(MONTHS) + r")\s*(\d{4})?",
+        t, re.I
+    )
+    if match:
+        day, month_str, year = int(match.group(1)), match.group(2), match.group(3)
+        month = MONTHS.index(month_str.lower()) + 1
+        year = int(year) if year else today.year
+        try:
+            return datetime(year, month, day).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+
+    match = re.search(
+        r"(" + "|".join(MONTHS) + r")\s+(\d{1,2})(?:st|nd|rd|th)?\s*(\d{4})?",
+        t, re.I
+    )
+    if match:
+        month_str, day, year = match.group(1), int(match.group(2)), match.group(3)
+        month = MONTHS.index(month_str.lower()) + 1
+        year = int(year) if year else today.year
+        try:
+            return datetime(year, month, day).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+
+    match = re.search(r"(\d{4})-(\d{2})-(\d{2})", t)
+    if match:
+        return match.group(0)
+
+    return None
+
+
+def parse_time(text: str) -> str | None:
+    match = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text, re.I)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2)) if match.group(2) else 0
+        meridiem = match.group(3).lower()
+        if meridiem == "pm" and hour != 12:
+            hour += 12
+        elif meridiem == "am" and hour == 12:
+            hour = 0
+        return f"{hour:02d}:{minute:02d}"
+
+    match = re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", text)
+    if match:
+        return f"{int(match.group(1)):02d}:{match.group(2)}"
+
+    return None
+
+
+def build_datetime(date_str: str, time_str: str) -> str:
+    time_parsed = parse_time(time_str or "")
+    if time_parsed:
+        hour, minute = int(time_parsed[:2]), int(time_parsed[3:])
+    else:
+        hour, minute = 10, 0
+
+    try:
+        base = datetime.strptime(date_str, "%Y-%m-%d")
+    except Exception:
+        base = datetime.now()
+
+    return base.replace(hour=hour, minute=minute, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 
