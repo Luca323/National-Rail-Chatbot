@@ -4,7 +4,7 @@ from NLPU import (intention_by_keyword, extract_time_date, extract_stations,
                   parse_time, parse_date, build_datetime)
 
 api = NationalRailAPI()
-llm = LlamaWrapper()
+#llm = LlamaWrapper()
 
 
 """
@@ -170,7 +170,11 @@ class ReasoningEngine:
         if child_match:  self.state.children = int(child_match.group(1))
 
     def process(self, user_input):
-        intent = intention_by_keyword(user_input)
+
+        try:
+            intent = intention_by_keyword(user_input)
+        except KeyError as e:
+            return "Sorry, I didn’t quite understand that. Could you rephrase your request?", False
 
         if intent == "goodbye":
             return "", True
