@@ -1,6 +1,5 @@
 import pandas as pd
 import xgboost as xgb
-import datetime as dt
 import pickle as pkl
 from sklearn.metrics import mean_absolute_error
 import os
@@ -122,9 +121,35 @@ def tune_hyperparameters(model, X, y):
 
     print(f'Best Params: {search.best_params_}')
 
+def extract_routes(stops: list) -> dict:
+    '''
+    Find all possible combinations of WEY -> WAT
+    '''
+    routes = {}
+    num_routes = 0
+    start = 'WEY'
+    end = 'WAT'
+    route = []
+
+    for stop in stops:
+        if stop == start:
+            route = []
+            route.append(stop)
+
+        elif stop == end:
+            route.append(stop)
+            if route not in routes.values():
+                routes[num_routes] = route
+                num_routes += 1
+
+        else:
+            route.append(stop)
+
+    return routes
+
+
 def predict_delay(model, current_station, destination, current_delay, reason, hour, day):
     mean_std = pd.read_csv('Station_mean_std.csv')
-
 
 
 
@@ -132,8 +157,19 @@ if __name__ == '__main__':
 
     model = xgb.XGBRegressor(n_estimators=100, max_depth=3, learning_rate=0.1, subsample=0.7)
     data = pd.read_csv('2025_service_details.csv')
-    features = build_feature_set(data)
 
+    #Clean outliers
+    station_counts = data['location'].value_counts()
+    valid_stations = station_counts[station_counts >= 100].index
+    data = data[data['location'].isin(valid_stations)]
+
+    routes = extract_routes(data['location'])
+    print(f'Possible Routes: {routes}')
+
+
+    features = build_feature_set(data)
+    print(features)
+'''
     X, y = features.drop(columns=['arrival_delay', 'departure_delay']), features['arrival_delay']
     #tune_hyperparameters(model, X, y)
 
@@ -143,5 +179,6 @@ if __name__ == '__main__':
 
     print(f'Mean Delay {y_train.mean()}')
     preds = model.predict(X_test)
-    print("MAE:", mean_absolute_error(y_test, preds))
-    print(features)
+
+    print("MAE:", mean_absolute_error(y_test, preds))'''
+
