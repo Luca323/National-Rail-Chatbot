@@ -2,10 +2,11 @@ from API import NationalRailAPI, LlamaWrapper
 from NLPU import (intention_by_keyword, extract_time_date, extract_stations,
                   check_ticket, railcard_choice, re,
                   parse_time, parse_date, build_datetime)
+from PredictionModel import extract_routes, pd
 
 api = NationalRailAPI()
 #llm = LlamaWrapper()
-
+routes = extract_routes(pd.read_csv('dataset.csv')['location']) #For later use by the prediction model, call here to save overhead
 
 """
 functions to get the information that might be presented in the chatbot. Uses some of the NLPU functions but also has
