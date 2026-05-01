@@ -85,7 +85,7 @@ def build_feature_set(data: pd.DataFrame) -> pd.DataFrame:
     feature_set['std_station_delay'] = feature_set.groupby('Station_code')['departure_delay'].transform('std')
 
     #save these features for prediction later
-    saved_features = feature_set[['Station_code', 'mean_station_delay', 'std_station_delay']].drop_duplicates()
+    saved_features = feature_set[['Station_code_enc', 'mean_station_delay', 'std_station_delay']].drop_duplicates()
     saved_features.to_csv('Station_mean_std.csv')
 
     #Remove unusable columns
@@ -125,10 +125,11 @@ def extract_routes(stops: list) -> dict:
     '''
     Find all possible combinations of WEY -> WAT
     '''
+    stops = encode(stops)
     routes = {}
     num_routes = 0
-    start = 'WEY'
-    end = 'WAT'
+    start = encode(['WEY'])
+    end = encode(['WAT'])
     route = []
 
     for stop in stops:
@@ -147,9 +148,86 @@ def extract_routes(stops: list) -> dict:
 
     return routes
 
+def select_routes(current, destination, routes):
 
-def predict_delay(model, current_station, destination, current_delay, reason, hour, day):
-    mean_std = pd.read_csv('Station_mean_std.csv')
+    valid_routes = [
+        stations
+        for stations in routes.values()
+        if (
+            current in stations and
+            destination in stations and
+            stations.index(current) < stations.index(destination)
+        )
+    ]
+
+    if not valid_routes:
+        raise ValueError("No valid routes found")
+
+    return valid_routes
+
+def predict_delay(
+        model,
+        current_station,
+        destination,
+        current_delay,
+        reason,
+        hour,
+        day,
+        routes
+):
+
+    enc_current, enc_destination = encode([current_station])[0], encode([destination])[0]
+    mean_std = pd.read_csv("Station_mean_std.csv")
+
+
+    valid_routes = select_routes(
+        enc_current,
+        enc_destination,
+        routes
+    )
+
+    if len(valid_routes) == 0:
+        raise ValueError("No valid routes found")
+
+    # choose first valid route
+    route = valid_routes[0]
+
+    # -----------------------------------
+    # Get remaining route
+    # -----------------------------------
+    start_idx = route.index(enc_current)
+    end_idx = route.index(enc_destination)
+
+    remaining_route = route[start_idx + 1:end_idx + 1]
+
+    # -----------------------------------
+    # Begin propagation
+    # -----------------------------------
+    delay = current_delay
+
+    for station_enc in remaining_route:
+        stats = mean_std[
+            mean_std['Station_code_enc'] == station_enc
+        ]
+
+        if stats.empty:
+            mean_delay = 0
+            std_delay = 0
+        else:
+            mean_delay = stats['mean_station_delay'].values[0]
+            std_delay = stats['std_station_delay'].values[0]
+
+        X = [[reason, station_enc, delay, hour, day, mean_delay, std_delay]]
+
+        # -----------------------------------
+        # Predict next station delay
+        # -----------------------------------
+        predicted_delay = model.predict(X)[0]
+
+        # propagate delay forward
+        delay = predicted_delay
+
+    return round(delay, 2)
 
 
 
@@ -160,25 +238,39 @@ if __name__ == '__main__':
 
     #Clean outliers
     station_counts = data['location'].value_counts()
-    valid_stations = station_counts[station_counts >= 100].index
-    data = data[data['location'].isin(valid_stations)]
+    frequent_stations = station_counts[station_counts >= 100].index
+    data = data[data['location'].isin(frequent_stations)]
 
     routes = extract_routes(data['location'])
-    print(f'Possible Routes: {routes}')
+    #print(f'Possible Routes: {routes}')
 
 
     features = build_feature_set(data)
-    print(features)
-'''
+    #print(features)
+
     X, y = features.drop(columns=['arrival_delay', 'departure_delay']), features['arrival_delay']
     #tune_hyperparameters(model, X, y)
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)
+    #X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)
     
-    model.fit(X_train, y_train)
+    model.fit(X, y)
 
-    print(f'Mean Delay {y_train.mean()}')
+    '''print(f'Mean Delay {y_train.mean()}')
     preds = model.predict(X_test)
 
     print("MAE:", mean_absolute_error(y_test, preds))'''
+
+
+    prediction = predict_delay(
+        model=model,
+        current_station="WEY",
+        destination="WAT",
+        current_delay=5,
+        reason=0,
+        hour=16,
+        day=4,
+        routes=routes
+    )
+
+    print(prediction)
 
