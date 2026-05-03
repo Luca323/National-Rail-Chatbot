@@ -215,7 +215,7 @@ def predict_delay(
 
 if __name__ == '__main__':
 
-    #Uncomment to test
+    #Uncomment to test - Example usage
     '''data = pd.read_csv('dataset.csv')
 
     routes = extract_routes(data['location'])
