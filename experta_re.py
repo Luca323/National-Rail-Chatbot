@@ -348,16 +348,38 @@ class BookingEngine(KnowledgeEngine):
 
 
 
-# -----------------------------
-# USER INPUT
-# -----------------------------
-def ask_boolean(question):
-    return input(question + " (yes/no): ").strip().lower() == "yes"
+# start engine for GUI
+engine = BookingEngine()
+engine.reset()
+
+def get_startup_msg():
+    engine._replies = []
+    engine.declare(Intent(value="greeting"))
+    engine.run()
+
+    return engine._replies.copy()
+
+def get_response(user_input):
+    engine._replies = []
+
+    try:
+        intent = intention_by_keyword(user_input)
+
+    except KeyError:
+        intent = None
+
+    if intent:
+        engine.declare(Intent(value=intent))
+
+    engine.declare(UserInput(text=user_input))
+
+    engine.run()
+
+    replies = engine._replies.copy()
+
+    return replies
 
 
-def ask_choice(question, options):
-    value = input(f"{question} {options}: ").strip().lower()
-    return value
 
 if __name__ == "__main__":
     engine = BookingEngine()

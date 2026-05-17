@@ -295,7 +295,7 @@ if __name__ == "__main__":
     sentences = ["Hello, I would like to book a train ticket to Norwich!",
                  "Hey, I want to travel to York next friday!",
                  "Thank you for helping me book my single ticket to west ham.",
-                 "I want a return ticket to London Bridge on Tuesday",
+                 "I want a return ticket to London Liverpool Street on Tuesday",
                  "I want to book a train for Monday 20th April at 14:00 to travel to Selhurst.",
                  "I want to travel to Portsmouth and Southsea on 30th April.",
                  "I want to travel to Portsmouth Harbour with a 16-25. railcard.",
