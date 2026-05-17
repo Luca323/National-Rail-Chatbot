@@ -290,9 +290,7 @@ class BookingEngine(KnowledgeEngine):
         AwaitingConfirm(),
         salience=90
     )
-
-    @staticmethod
-    def search_and_present(bk):
+    def search_and_present(self, bk):
         try:
             xml = api.get_journey(
                 origin_crs=bk["origin"],
