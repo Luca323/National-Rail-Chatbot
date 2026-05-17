@@ -48,7 +48,7 @@ class Booking(Fact):
     return_time  = Field(str,  default=None)
     adults       = Field(int,  default=1)
     children     = Field(int,  default=0)
-    railcard     = Field(str,  default=None)
+    railcard     = Field(object,  default=None)
 
 class AskingFor(Fact):
     slot = Field(str, mandatory=True)
@@ -58,26 +58,23 @@ class AwaitingConfirm(Fact): pass
 class BookingComplete(Fact): pass
 class SessionDone(Fact):     pass
 
-# -----------------------------
-# EXPERT SYSTEM WITH PRIORITY
-# -----------------------------
 
 class BookingEngine(KnowledgeEngine):
 
     @Rule(Intent(value='greeting'), salience=100)
     def handle_greeting(self):
-        self._reply("Hello! I can help you find the cheapest train ticket. "
+        self.reply("Hello! I can help you find the cheapest train ticket. "
                     "Where would you like to travel?")
         self.retract_by_type(Intent)
 
     @Rule(Intent(value="thanks"), salience=100)
     def handle_thanks(self):
-        self._reply("You're welcome!")
+        self.reply("You're welcome!")
         self.retract_by_type(Intent)
 
     @Rule(Intent(value="goodbye"), salience=100)
     def handle_goodbye(self):
-        self._reply("")
+        self.reply("")
         self.declare(SessionDone())
         self.retract_by_type(Intent)
 
@@ -85,6 +82,10 @@ class BookingEngine(KnowledgeEngine):
     def start_booking(self):
         self.declare(Booking())
         self.retract_by_type(Intent)
+
+    @Rule(UserInput(), NOT(Booking()), NOT(Intent(value="goodbye")), salience=95)
+    def auto_start_booking(self):
+        self.declare(Booking())
 
     @Rule(
         AS.ui << UserInput(text=MATCH.text), AS.bk << Booking(),
@@ -103,7 +104,7 @@ class BookingEngine(KnowledgeEngine):
         if not parsed_time:
             parsed_time = parse_time(text)
 
-        asking = self._current_asking()
+        asking = self.current_asking()
 
         is_return_context = (
                 bk["ticket_type"] == "return"
@@ -152,8 +153,10 @@ class BookingEngine(KnowledgeEngine):
 
         if updates:
             self.modify(bk, **updates)
+            self.retract_by_type(AskingFor)  # <-- add this
 
-        self.retract(ui)  # consumed
+        self.retract(ui)
+
 
     def current_asking(self):
         for fact in self.facts.values():
@@ -161,9 +164,189 @@ class BookingEngine(KnowledgeEngine):
                 return fact["slot"]
         return None
 
+    def reply(self, msg):
+        self._replies.append(msg)
+
+    def retract_by_type(self, fact_class):
+        for fid, fact in list(self.facts.items()):
+            if isinstance(fact, fact_class):
+                self.retract(fact)
+
     def ask_slot(self, slot):
         if self.current_asking() != slot:
-            self.retract_by_type)AskingFor
+            self.retract_by_type(AskingFor)
+            self.declare(AskingFor(slot=slot))
+            self.reply(SLOT_PROMPTS[slot])
+
+    @Rule(Booking(origin=None), NOT(AskingFor()), NOT(AwaitingConfirm()),salience = 70)
+    def ask_origin(self):
+        self.ask_slot(slot='origin')
+
+    @Rule(Booking(destination=None), NOT(Booking(origin=None)),
+          NOT(AskingFor()), NOT(AwaitingConfirm()), salience=69)
+    def ask_destination(self):
+        self.ask_slot(slot='destination')
+
+    @Rule(Booking(ticket_type=None), NOT(Booking(origin=None)), NOT(Booking(destination=None)),
+          NOT(AskingFor()), NOT(AwaitingConfirm()), salience=68)
+    def ask_ticket_type(self):
+        self.ask_slot(slot="ticket_type")
+
+    @Rule(Booking(date=None), NOT(Booking(ticket_type=None)),
+          NOT(AskingFor()), NOT(AwaitingConfirm()), salience=67)
+    def ask_date(self):
+        self.ask_slot(slot="date")
+
+    @Rule(Booking(time=None), NOT(Booking(date=None)),
+          NOT(AskingFor()), NOT(AwaitingConfirm()), salience=66)
+    def ask_time(self):
+        self.ask_slot(slot="time")
+
+    @Rule(AS.bk << Booking(ticket_type="return", return_date=None),
+          NOT(Booking(time=None)),
+          NOT(AskingFor()), NOT(AwaitingConfirm()), salience=65)
+    def ask_return_date(self, bk):
+        self.ask_slot(slot="return_date")
+
+    @Rule(AS.bk << Booking(ticket_type="return", return_time=None),
+          NOT(Booking(return_date=None)),
+          NOT(AskingFor()), NOT(AwaitingConfirm()), salience=64)
+    def ask_return_time(self, bk):
+        self.ask_slot(slot="return_time")
+
+    #Railcard logic after all conditions for booking are met
+    @Rule(
+        Booking(origin=MATCH.o, destination=MATCH.d, date=MATCH.dt,
+                time=MATCH.tm, ticket_type=MATCH.tt),
+        NOT(Booking(origin=None)), NOT(Booking(destination=None)),
+        NOT(Booking(date=None)), NOT(Booking(time=None)),
+        NOT(Booking(ticket_type=None)),
+        NOT(RailcardAsked()),
+        NOT(AwaitingConfirm()),
+        NOT(AskingFor()),
+        salience=60
+    )
+    def ask_railcard(self, o, d, dt, tm, tt):
+        self.declare(RailcardAsked())
+        self.declare(AskingFor(slot="railcard"))
+        self.reply(RAILCARD_PROMPT)
+
+    @Rule(
+        AS.ui << UserInput(text=MATCH.text),
+        AskingFor(slot="railcard"),
+        AS.bk << Booking(),
+        salience=85  # above extract_entities so railcard text isn't also entity-parsed
+    )
+    def handle_railcard_answer(self, ui, bk, text):
+        no_words = ("no", "none", "don't", "dont", "haven't", "havent", "n/a")
+        railcard = None if any(w in text.lower() for w in no_words) else railcard_choice(text)
+        self.modify(bk, railcard=railcard)
+        self.retract(ui)
+        self.retract_by_type(AskingFor)
+
+    #Final check and summary
+    @staticmethod
+    def summary(bk):
+        lines = [
+            f"  From : {bk['origin']}",
+            f"  To : {bk['destination']}",
+            f"  Date : {bk['date']}",
+            f"  Time : {bk['time']}",
+            f"  Ticket : {bk['ticket_type']}",
+        ]
+        if bk["ticket_type"] == "return":
+            lines += [
+                f"  Return date : {bk['return_date']}",
+                f"  Return time : {bk['return_time']}",
+            ]
+        lines += [
+            f"  Adults : {bk['adults']}",
+            f"  Children : {bk['children']}",
+            f"  Railcard : {bk['railcard'] or 'none'}",
+        ]
+        return "\n".join(lines)
+
+    @Rule(
+        AS.bk << Booking(),
+        RailcardAsked(),
+        NOT(Booking(origin=None)), NOT(Booking(destination=None)),
+        NOT(Booking(date=None)), NOT(Booking(time=None)),
+        NOT(Booking(ticket_type=None)),
+        NOT(AwaitingConfirm()),
+        NOT(AskingFor()),
+        NOT(BookingComplete()),
+        salience=50
+    )
+    def request_confirmation(self, bk):
+        self.declare(AwaitingConfirm())
+        self.reply(
+            "Here's what I have:\n" + self.summary(bk) +
+            "\n\nShall I search for the cheapest ticket? (yes / no)"
+        )
+
+    @Rule(
+        AS.ui << UserInput(text=MATCH.text),
+        AS.bk << Booking(),
+        AwaitingConfirm(),
+        salience=90
+    )
+
+    @staticmethod
+    def search_and_present(bk):
+        try:
+            xml = api.get_journey(
+                origin_crs=bk["origin"],
+                destination_crs=bk["destination"],
+                datetime_str=build_datetime(bk["date"], bk["time"]),
+                adults=bk["adults"],
+                children=bk["children"],
+            )
+            journeys = NationalRailAPI.parse_journeys(xml)
+        except Exception as e:
+            return f"Sorry, I couldn't reach National Rail at the moment: {e}"
+
+        if not journeys:
+            return "I couldn't find any trains for that journey. Try a different time or date?"
+
+        def min_price(j):
+            fares = [f["price_pence"] for f in j.get("fares", []) if f.get("price_pence")]
+            return min(fares) if fares else float("inf")
+
+        journeys.sort(key=min_price)
+        lines = ["Here are the available trains:\n"]
+        for i, j in enumerate(journeys[:3], 1):
+            dep = j.get("departure", "?")[11:16]
+            arr = j.get("arrival", "?")[11:16]
+            c = j.get("changes", 0)
+            cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
+            p = min_price(j)
+            ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
+            lines.append(f"  {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
+
+        p0 = min_price(journeys[0])
+        if p0 != float("inf"):
+            lines.append(f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}")
+        return "\n".join(lines)
+
+    @Rule(
+        AS.ui << UserInput(text=MATCH.text),
+        AS.bk << Booking(),
+        AwaitingConfirm(),
+        salience=90
+    )
+    def handle_confirmation(self, ui, bk, text):
+        self.retract(ui)
+        self.retract_by_type(AwaitingConfirm)
+
+        if any(w in text.lower() for w in ("yes", "yeah", "sure", "ok", "confirm")):
+            result = self.search_and_present(bk)
+            self.reply(result + "\n\nSay 'book' to search again or 'goodbye' to leave.")
+            self.declare(BookingComplete())
+        else:
+            self.retract(bk)
+            self.retract_by_type(RailcardAsked)
+            self.declare(Booking())
+            self.reply("No problem, let's start over. Where would you like to travel from?")
 
 
 
@@ -178,23 +361,54 @@ def ask_choice(question, options):
     value = input(f"{question} {options}: ").strip().lower()
     return value
 
-
-# -----------------------------
-# MAIN PROGRAM
-# -----------------------------
 if __name__ == "__main__":
+    engine = BookingEngine()
+    engine.reset()
+    engine._replies = []
 
-    print("\n=== CAR FAULT DIAGNOSTIC SYSTEM (PRIORITY MODE) ===\n")
+    # Seed the greeting
+    engine.declare(Intent(value="greeting"))
+    engine.run()
+    for r in engine._replies:
+        print(f"BOT: {r}")
 
+    while True:
+        try:
+            user_input = input("YOU: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("BOT: Goodbye!")
+            break
 
-    battery_voltage = ask_choice("Battery voltage", ["low", "normal"])
-    clicking_sound = ask_boolean("Clicking sound when turning key?")
-    engine_starts = ask_boolean("Does the engine start?")
-    headlights_dim = ask_boolean("Headlights dim while driving?")
-    overheating = ask_boolean("Engine overheating?")
-    brake_fluid = ask_choice("Brake fluid level", ["low", "normal"])
-    brake_noise = ask_choice("Brake noise", ["none", "squealing", "grinding"])
+        if not user_input:
+            continue
 
+        engine._replies = []
 
+        # Detect intent, then assert facts for this turn
+        try:
+            intent = intention_by_keyword(user_input)
+        except KeyError:
+            intent = None
 
-    print("\n--- PRIORITISED DIAGNOSIS ---")
+        if not intent:
+            # No recognised intent — still assert UserInput so entity extraction can run
+            engine.declare(UserInput(text=user_input))
+            engine.run()
+            for r in engine._replies:
+                if r:
+                    print(f"BOT: {r}")
+            continue
+
+        engine.declare(Intent(value=intent))
+        engine.declare(UserInput(text=user_input))
+        engine.run()
+
+        # THIS BLOCK IS MISSING — add it:
+        for r in engine._replies:
+            if r:
+                print(f"BOT: {r}")
+
+        if any(isinstance(f, SessionDone) for f in engine.facts.values()):
+            print("BOT: Goodbye!")
+            break
+
