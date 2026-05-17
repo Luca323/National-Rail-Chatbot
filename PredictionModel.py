@@ -216,7 +216,7 @@ def predict_delay(
 if __name__ == '__main__':
 
     #Uncomment to test - Example usage
-    '''data = pd.read_csv('dataset.csv')
+    data = pd.read_csv('dataset.csv')
 
     routes = extract_routes(data['location'])
     prediction = predict_delay(
@@ -229,7 +229,8 @@ if __name__ == '__main__':
         routes=routes
     )
 
-    print(f"Predicted delay at destination: {prediction} minutes")'''
+    print(f"Predicted delay at destination: {prediction} minutes")
+    '''
 
 
     years = [2022,2023,2024,2025]
@@ -259,3 +260,4 @@ if __name__ == '__main__':
         pkl.dump(model, f)
 
     print('Model saved')
+'''

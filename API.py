@@ -137,10 +137,8 @@ class LlamaWrapper:
         data = response.json()
         text = data.get("content", "").strip()
 
-        # 🔥 clean garbage output
         text = text.split("\n")[0].strip()
 
-        # 🔥 fallback safety
         if not text or len(text) > 200 or "-" * 5 in text:
             return "Please rephrase your request so I can help with train bookings."
 
@@ -149,43 +147,9 @@ class LlamaWrapper:
 
 if __name__ == "__main__":
 
-    llama = LlamaWrapper()
-
-    data = [
-        {"time": "19:00", "destination": "Norwich", "available": True},
-        {"time": "15:00", "destination": "Norwich", "available": True},
-        {"time": "13:00", "destination": "Norwich", "available": False},
-    ]
-    query = 'When is the next available train tomorrow?'
-
-    #Example for how to use LLM prompt formatting, the model I've downloaded is lightweight so be specific
-    prompt = f'''
-    You are a train booking assistant.
-
-    Select the earliest AVAILABLE train to the requested destination.
-    
-    Rules:
-    - Only consider trains where available = True
-    - Only consider trains matching the destination
-    - Return ONLY the time (HH:MM)
-    - Do not explain
-    
-    DATA:
-    {data}
-    
-    USER QUERY:
-    {query}
-    
-    ANSWER:
-    '''
 
 
-    response = llama.generate(prompt)
+    api = NationalRailAPI()
+    response = api.get_journey("LST", "NRW", "2026-05-14T10:00:00")
 
-    print(response)
-
-
-    '''api = NationalRailAPI()
-    response = api.get_journey("LST", "NRW", "2026-04-14T10:00:00")
-
-    print(api.parse_journeys(response))'''
+    print(api.parse_journeys(response))
