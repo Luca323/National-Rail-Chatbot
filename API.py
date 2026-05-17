@@ -109,7 +109,7 @@ class NationalRailAPI:
                 "departure": dep.text if dep is not None else None,
                 "arrival": arr.text if arr is not None else None,
                 "changes": num_changes,
-                "fares": fares,  # just return all fares as-is
+                "fares": fares,  # just return all fares
                 "legs": parsed_legs
             })
 

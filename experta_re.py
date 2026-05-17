@@ -1,3 +1,8 @@
+from API import NationalRailAPI, LlamaWrapper
+from NLPU import (intention_by_keyword, extract_time_date, extract_stations,
+                  check_ticket, railcard_choice, re,
+                  parse_time, parse_date, build_datetime)
+from PredictionModel import extract_routes, pd, predict_delay
 import collections
 import collections.abc
 for type_name in ['Mapping','MutableMapping','Iterable','MutableSet']:
@@ -6,65 +11,160 @@ for type_name in ['Mapping','MutableMapping','Iterable','MutableSet']:
 
 from experta import *
 
+api = NationalRailAPI()
+
+SLOT_PROMPTS = {
+    "origin":       "Where would you like to travel from?",
+    "destination":  "Where would you like to travel to?",
+    "date":         "What date would you like to travel?",
+    "time":         "What time would you like to depart?",
+    "ticket_type":  "Would you like a one-way, return, or open return ticket?",
+    "return_date":  "What date would you like to return?",
+    "return_time":  "What time would you like to return?",
+}
+
+RAILCARD_PROMPT = (
+    "Do you have a railcard? "
+    "(16-17, 16-25, 26-30, disabled, family & friends, network, senior, "
+    "two together, veterans — or 'no')"
+)
 
 # -----------------------------
 # FACT DEFINITION
 # -----------------------------
-class Car(Fact):
-    """Facts describing observed car symptoms"""
-    pass
+class UserInput(Fact):
+    text = Field(str, mandatory=True)
 
+class Intent(Fact):
+    value = Field(str, mandatory=True)
+
+class Booking(Fact):
+    origin       = Field(str,  default=None)
+    destination  = Field(str,  default=None)
+    date         = Field(str,  default=None)
+    time         = Field(str,  default=None)
+    ticket_type  = Field(str,  default=None)
+    return_date  = Field(str,  default=None)
+    return_time  = Field(str,  default=None)
+    adults       = Field(int,  default=1)
+    children     = Field(int,  default=0)
+    railcard     = Field(str,  default=None)
+
+class AskingFor(Fact):
+    slot = Field(str, mandatory=True)
+
+class RailcardAsked(Fact):  pass
+class AwaitingConfirm(Fact): pass
+class BookingComplete(Fact): pass
+class SessionDone(Fact):     pass
 
 # -----------------------------
 # EXPERT SYSTEM WITH PRIORITY
 # -----------------------------
-class CarDoctor(KnowledgeEngine):
 
-    # =============================
-    # SAFETY CRITICAL (Highest)
-    # =============================
-    @Rule(Car(brake_fluid="low"), salience=100)
-    def brake_failure(self):
-        print("CRITICAL: Brake failure risk — stop vehicle immediately at a safe place!")
+class BookingEngine(KnowledgeEngine):
 
-    # =============================
-    # ENGINE DAMAGE RISK
-    # =============================
-    @Rule(Car(overheating=True), salience=50)
-    def engine_overheat(self):
-        print("WARNING: Engine overheating — stop at a safe place and cool engine.")
+    @Rule(Intent(value='greeting'), salience=100)
+    def handle_greeting(self):
+        self._reply("Hello! I can help you find the cheapest train ticket. "
+                    "Where would you like to travel?")
+        self.retract_by_type(Intent)
 
-    # =============================
-    # MOBILITY FAILURES
-    # =============================
-    @Rule(Car(engine_starts=False, battery_voltage="low"), salience=20)
-    def dead_battery(self):
-        print("Diagnosis: Battery likely dead.")
+    @Rule(Intent(value="thanks"), salience=100)
+    def handle_thanks(self):
+        self._reply("You're welcome!")
+        self.retract_by_type(Intent)
 
-    @Rule(Car(engine_starts=False, clicking_sound=True), salience=15)
-    def starter_fault(self):
-        print("Diagnosis: Starter motor may be faulty.")
+    @Rule(Intent(value="goodbye"), salience=100)
+    def handle_goodbye(self):
+        self._reply("")
+        self.declare(SessionDone())
+        self.retract_by_type(Intent)
 
-    # =============================
-    # PERFORMANCE ISSUES
-    # =============================
-    @Rule(Car(headlights_dim=True, engine_starts=True), salience=10)
-    def alternator_problem(self):
-        print("Diagnosis: Possible alternator charging problem.")
+    @Rule(Intent(value="book"), NOT(Booking()), salience=90)
+    def start_booking(self):
+        self.declare(Booking())
+        self.retract_by_type(Intent)
 
-    # =============================
-    # MAINTENANCE ISSUES
-    # =============================
-    @Rule(Car(brake_noise="squealing"), salience=-10)
-    def worn_brake_pads(self):
-        print("Maintenance: Brake pads worn — replace soon.")
+    @Rule(
+        AS.ui << UserInput(text=MATCH.text), AS.bk << Booking(),
+        salience=80
+    )
+    def extract_entities(self, ui, bk, text):
+        updates = {}
 
-    # =============================
-    # FALLBACK
-    # =============================
-    @Rule(salience=-100)
-    def unknown_problem(self):
-        print("Cannot diagnose your car's problem. Further inspection is reuqired.")
+        #Dates and time
+        spacy_dates, spacy_times = extract_time_date(text)
+        parsed_date = next((parse_date(d) for d in spacy_dates if parse_date(d)), None)
+        if not parsed_date:
+            parsed_date = parse_date(text)
+
+        parsed_time = next((parse_time(t) for t in spacy_times if parse_time(t)), None)
+        if not parsed_time:
+            parsed_time = parse_time(text)
+
+        asking = self._current_asking()
+
+        is_return_context = (
+                bk["ticket_type"] == "return"
+                and bk["date"]
+                and asking in ("return_date", "return_time")
+        )
+
+        if is_return_context:
+            if parsed_date and not bk["return_date"]:
+                updates["return_date"] = parsed_date
+            if parsed_time and not bk["return_time"]:
+                updates["return_time"] = parsed_time
+        else:
+            if parsed_date and not bk["date"]:
+                updates["date"] = parsed_date
+            if parsed_time and not bk["time"]:
+                updates["time"] = parsed_time
+
+            #double check
+            if bk["ticket_type"] == "return" and (bk["time"] or updates.get("time")):
+                all_times = [parse_time(t) for t in spacy_times if parse_time(t)]
+                if len(all_times) >= 2 and not bk["return_time"]:
+                    updates["return_time"] = all_times[1]
+
+        #Stations
+        if not bk["origin"] or not bk["destination"]:
+            o_crs, d_crs = extract_stations(text, asking)
+            if o_crs and not bk["origin"]:
+                updates["origin"] = o_crs
+            if d_crs and not bk["destination"]:
+                updates["destination"] = d_crs
+
+        #ticket type
+        if not bk["ticket_type"]:
+            tt = check_ticket(text)
+            if tt:
+                updates["ticket_type"] = tt
+
+        #passengers
+        am = re.search(r"(\d+)\s+adult", text, re.I)
+        cm = re.search(r"(\d+)\s+child", text, re.I)
+        if am:
+            updates["adults"] = int(am.group(1))
+        if cm:
+            updates["children"] = int(cm.group(1))
+
+        if updates:
+            self.modify(bk, **updates)
+
+        self.retract(ui)  # consumed
+
+    def current_asking(self):
+        for fact in self.facts.values():
+            if isinstance(fact, AskingFor):
+                return fact["slot"]
+        return None
+
+    def ask_slot(self, slot):
+        if self.current_asking() != slot:
+            self.retract_by_type)AskingFor
+
 
 
 # -----------------------------
@@ -95,18 +195,6 @@ if __name__ == "__main__":
     brake_fluid = ask_choice("Brake fluid level", ["low", "normal"])
     brake_noise = ask_choice("Brake noise", ["none", "squealing", "grinding"])
 
-    engine = CarDoctor()
-    engine.reset()
 
-    engine.declare(Car(
-        battery_voltage=battery_voltage,
-        clicking_sound=clicking_sound,
-        engine_starts=engine_starts,
-        headlights_dim=headlights_dim,
-        overheating=overheating,
-        brake_fluid=brake_fluid,
-        brake_noise=brake_noise
-    ))
 
     print("\n--- PRIORITISED DIAGNOSIS ---")
-    engine.run()
