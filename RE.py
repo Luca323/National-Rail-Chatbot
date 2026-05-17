@@ -3,12 +3,7 @@ from NLPU import (intention_by_keyword, extract_time_date, extract_stations,
                   check_ticket, railcard_choice, re,
                   parse_time, parse_date, build_datetime)
 from PredictionModel import extract_routes, pd, predict_delay
-import collections
-import collections.abc
-for type_name in ['Mapping','MutableMapping','Iterable','MutableSet']:
-    if not hasattr(collections, type_name):
-        setattr(collections, type_name, getattr(collections.abc, type_name))
-from experta import *
+
 
 """
 functions to get the information that might be presented in the chatbot. Uses some of the NLPU functions but also has
