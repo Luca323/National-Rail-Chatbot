@@ -1,26 +1,35 @@
-from API import NationalRailAPI, LlamaWrapper
+from API import NationalRailAPI
 from NLPU import (intention_by_keyword, extract_time_date, extract_stations,
                   check_ticket, railcard_choice, re,
                   parse_time, parse_date, build_datetime)
 from PredictionModel import extract_routes, pd, predict_delay
+from datetime import datetime
 import collections
 import collections.abc
 for type_name in ['Mapping','MutableMapping','Iterable','MutableSet']:
     if not hasattr(collections, type_name):
         setattr(collections, type_name, getattr(collections.abc, type_name))
-
 from experta import *
 
 api = NationalRailAPI()
 
+ROUTES = extract_routes(pd.read_csv('dataset.csv')['location']) #Loaded earlier to prevent later overhead
+
 SLOT_PROMPTS = {
-    "origin":       "Where would you like to travel from?",
-    "destination":  "Where would you like to travel to?",
-    "date":         "What date would you like to travel?",
-    "time":         "What time would you like to depart?",
-    "ticket_type":  "Would you like a one-way, return, or open return ticket?",
-    "return_date":  "What date would you like to return?",
-    "return_time":  "What time would you like to return?",
+    "origin": "Where would you like to travel from?",
+    "destination": "Where would you like to travel to?",
+    "date": "What date would you like to travel?",
+    "time": "What time would you like to depart?",
+    "ticket_type": "Would you like a one-way, return, or open return ticket?",
+    "return_date": "What date would you like to return?",
+    "return_time": "What time would you like to return?",
+}
+
+DELAY_PROMPTS = {
+    "origin": "Where are you currently?",
+    "destination": "Where are you travelling to?",
+    "current_delay": "How many minutes late is your train currently?",
+    "reason": "Do you have the delay reason code?"
 }
 
 RAILCARD_PROMPT = (
@@ -29,9 +38,7 @@ RAILCARD_PROMPT = (
     "two together, veterans — or 'no')"
 )
 
-# -----------------------------
-# FACT DEFINITION
-# -----------------------------
+
 class UserInput(Fact):
     text = Field(str, mandatory=True)
 
@@ -50,6 +57,7 @@ class Booking(Fact):
     children     = Field(int,  default=0)
     railcard     = Field(object,  default=None)
 
+
 class AskingFor(Fact):
     slot = Field(str, mandatory=True)
 
@@ -57,7 +65,16 @@ class RailcardAsked(Fact):  pass
 class AwaitingConfirm(Fact): pass
 class BookingComplete(Fact): pass
 class SessionDone(Fact):     pass
+class Delayed(Fact): pass
 
+class DelayJourney(Fact):
+    origin = Field(str, default=None)
+    destination = Field(str, default=None)
+    current_delay = Field(int, default=None)
+    reason = Field(int, default=None)
+
+class DelayPrediction(Fact):
+    minutes = Field(float, mandatory=True)
 
 class BookingEngine(KnowledgeEngine):
 
@@ -78,12 +95,17 @@ class BookingEngine(KnowledgeEngine):
         self.declare(SessionDone())
         self.retract_by_type(Intent)
 
-    @Rule(Intent(value="book"), NOT(Booking()), salience=90)
+    @Rule(Intent(value="delay"), salience=100)
+    def handle_delay(self):
+        self.declare(DelayJourney())
+        self.retract_by_type(Intent)
+
+    @Rule(Intent(value="book"),NOT(DelayJourney()) , NOT(Booking()), salience=90)
     def start_booking(self):
         self.declare(Booking())
         self.retract_by_type(Intent)
 
-    @Rule(UserInput(), NOT(Booking()), NOT(Intent(value="goodbye")), salience=95)
+    @Rule(UserInput(),NOT(Delayed()), NOT(DelayJourney()), NOT(Intent(value="goodbye")), salience=95)
     def auto_start_booking(self):
         self.declare(Booking())
 
@@ -153,10 +175,9 @@ class BookingEngine(KnowledgeEngine):
 
         if updates:
             self.modify(bk, **updates)
-            self.retract_by_type(AskingFor)  # <-- add this
+            self.retract_by_type(AskingFor)
 
         self.retract(ui)
-
 
     def current_asking(self):
         for fact in self.facts.values():
@@ -167,6 +188,7 @@ class BookingEngine(KnowledgeEngine):
     def reply(self, msg):
         self._replies.append(msg)
 
+    #Removes facts as needed
     def retract_by_type(self, fact_class):
         for fid, fact in list(self.facts.items()):
             if isinstance(fact, fact_class):
@@ -178,26 +200,26 @@ class BookingEngine(KnowledgeEngine):
             self.declare(AskingFor(slot=slot))
             self.reply(SLOT_PROMPTS[slot])
 
-    @Rule(Booking(origin=None), NOT(AskingFor()), NOT(AwaitingConfirm()),salience = 70)
+    @Rule(Booking(origin=None),NOT(DelayJourney()), NOT(AskingFor()), NOT(AwaitingConfirm()),salience = 70)
     def ask_origin(self):
         self.ask_slot(slot='origin')
 
-    @Rule(Booking(destination=None), NOT(Booking(origin=None)),
+    @Rule(Booking(destination=None),NOT(DelayJourney()), NOT(Booking(origin=None)),
           NOT(AskingFor()), NOT(AwaitingConfirm()), salience=69)
     def ask_destination(self):
         self.ask_slot(slot='destination')
 
-    @Rule(Booking(ticket_type=None), NOT(Booking(origin=None)), NOT(Booking(destination=None)),
+    @Rule(Booking(ticket_type=None),NOT(DelayJourney()), NOT(Booking(origin=None)), NOT(Booking(destination=None)),
           NOT(AskingFor()), NOT(AwaitingConfirm()), salience=68)
     def ask_ticket_type(self):
         self.ask_slot(slot="ticket_type")
 
-    @Rule(Booking(date=None), NOT(Booking(ticket_type=None)),
+    @Rule(Booking(date=None),NOT(DelayJourney()), NOT(Booking(ticket_type=None)),
           NOT(AskingFor()), NOT(AwaitingConfirm()), salience=67)
     def ask_date(self):
         self.ask_slot(slot="date")
 
-    @Rule(Booking(time=None), NOT(Booking(date=None)),
+    @Rule(Booking(time=None),NOT(DelayJourney()), NOT(Booking(date=None)),
           NOT(AskingFor()), NOT(AwaitingConfirm()), salience=66)
     def ask_time(self):
         self.ask_slot(slot="time")
@@ -243,6 +265,136 @@ class BookingEngine(KnowledgeEngine):
         self.modify(bk, railcard=railcard)
         self.retract(ui)
         self.retract_by_type(AskingFor)
+
+
+    #Delay Logic
+
+    @Rule(DelayJourney(origin=None), NOT(AskingFor()),salience=80)
+    def ask_delay_origin(self):
+        self.declare(AskingFor(slot="delay_origin"))
+        self.reply("Where are you currently?")
+
+    @Rule(
+        DelayJourney(
+            origin=P(lambda x: x is not None),
+            destination=None
+        ),
+        NOT(AskingFor()),
+        salience=79
+    )
+    def ask_delay_destination(self):
+
+        self.declare(AskingFor(slot="delay_destination"))
+        self.reply("Where are you travelling to?")
+
+    @Rule(
+        DelayJourney(
+            origin=P(lambda x: x is not None),
+            destination=P(lambda x: x is not None),
+            current_delay=P(lambda x: x is not None),
+            reason=None
+        ),
+        NOT(AskingFor()),
+        salience=77
+    )
+    def ask_reason(self):
+        self.declare(AskingFor(slot="delay_reason"))
+        self.reply("Do you have the delay reason code?")
+
+    @Rule(
+        DelayJourney(
+            origin=P(lambda x: x is not None),
+            destination=P(lambda x: x is not None),
+            current_delay=None
+        ),
+        NOT(AskingFor()),
+        salience=78
+    )
+    def ask_current_delay(self):
+        self.declare(AskingFor(slot="delay_minutes"))
+        self.reply("How many minutes late is your train currently?")
+
+    @Rule(
+        AS.ui << UserInput(text=MATCH.text),
+        AS.dj << DelayJourney(),
+        salience=85
+    )
+    def extract_delay_entities(self, ui, dj, text):
+
+        updates = {}
+        asking = self.current_asking()
+
+        if asking == "delay_origin":
+            o, _ = extract_stations(text, "origin")
+            if o:
+                updates["origin"] = o
+
+        elif asking == "delay_destination":
+            _, d = extract_stations(text, "destination")
+            if d:
+                updates["destination"] = d
+
+        elif asking == "delay_minutes":
+            m = re.search(r"\d+", text)
+            if m:
+                updates["current_delay"] = int(m.group())
+
+        elif asking == "delay_reason":
+            no_words = ("no", "none", "dont", "dont", "havent", "n/a")
+            m = re.search(r"\d+", text)
+            if m:
+                updates["reason"] = int(m.group())
+            elif any(w in text.lower() for w in no_words):
+                updates["reason"] = 0
+
+        if updates:
+            self.modify(dj, **updates)
+            self.retract_by_type(AskingFor)
+
+        self.retract(ui)
+
+    @Rule(
+        DelayJourney(
+            origin=P(lambda x: x is not None),
+            destination=P(lambda x: x is not None),
+            current_delay=P(lambda x: x is not None),
+            reason=P(lambda x: x is not None)
+        ),
+
+        AS.dj << DelayJourney(
+            origin=MATCH.o,
+            destination=MATCH.d,
+            current_delay=MATCH.cd,
+            reason=MATCH.r
+        ),
+
+        NOT(DelayPrediction()),
+        salience=50
+    )
+    def run_prediction(self, o, d, cd, r):
+        prediction = predict_delay(
+            current_station=o,
+            destination=d,
+            current_delay=cd,
+            reason=r,
+            hour=datetime.now().hour,
+            day=datetime.now().weekday(),
+            routes=ROUTES
+        )
+
+        self.declare(
+            DelayPrediction(minutes=round(prediction, 1))
+        )
+
+    @Rule(DelayPrediction(minutes=MATCH.m),
+        salience=40)
+    def respond_prediction(self, m):
+        self.reply(f"Your train is predicted to arrive approximately {m} minutes late.")
+        if m > 15:
+            self.reply("You may be entitled to delay recompensation")
+
+        self.reset()
+
 
     #Final check and summary
     @staticmethod
@@ -386,7 +538,6 @@ if __name__ == "__main__":
     engine.reset()
     engine._replies = []
 
-    # Seed the greeting
     engine.declare(Intent(value="greeting"))
     engine.run()
     for r in engine._replies:
@@ -404,7 +555,7 @@ if __name__ == "__main__":
 
         engine._replies = []
 
-        # Detect intent, then assert facts for this turn
+        #detect intent, then assert facts for this turn
         try:
             intent = intention_by_keyword(user_input)
         except KeyError:
@@ -423,7 +574,6 @@ if __name__ == "__main__":
         engine.declare(UserInput(text=user_input))
         engine.run()
 
-        # THIS BLOCK IS MISSING — add it:
         for r in engine._replies:
             if r:
                 print(f"BOT: {r}")

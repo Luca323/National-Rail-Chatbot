@@ -84,8 +84,7 @@
             "adult", "child", "children", "passenger", "people", "person", "group", "family", "couple"
         ],
         "responses": [
-            "How many adults and children will be travelling?",
-            "Got it. How many passengers in total?"
+            "How many adults and children will be travelling?"
         ]
     },
     "railcard": {
@@ -104,6 +103,14 @@
         "responses": [
             "Would you like a single, return, or open return ticket?",
             "Got it. Is that a single or return journey?"
+        ]
+    },
+    "delay": {
+        "patterns": [
+            "delay", "delayed", "stopped", "incident"
+        ],
+        "responses": [
+            "Ok, I will need some details to predict your arrival time"
         ]
     }
 }

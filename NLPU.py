@@ -71,36 +71,68 @@ stations_df = pd.read_csv("StationNameAndCode.csv")
 station_names = stations_df['NAME'].str.lower().tolist() # get list of stations from df
 
 def get_station(userInput):
-    # returns the best match station from a uncleaned sentence
+
     best_match = None
     best_score = 0
 
-    # look for exact match
-    for station in station_names:
-        if station in userInput.lower():
-            best_match = station
+    text = userInput.lower()
 
-    # if no exact match, look for closest matches using n-grams
-    if best_match == None:
-        for i in range(1,4): # unigrams, bigrams & trigrams
-            ngram = ngrams(userInput.split(), n=i)
+    # exact match
+    for station in station_names:
+
+        if station.lower() in text:
+            best_match = station
+            best_score = 1.0
+            break
+
+    # fuzzy matching
+    if best_match is None:
+
+        for i in range(1, 4):
+
+            ngram = ngrams(text.split(), n=i)
+
             for grams in ngram:
+
                 gram = ' '.join(grams)
-                close_matches = difflib.get_close_matches(gram, station_names, n=1, cutoff=0.7)
+
+                close_matches = difflib.get_close_matches(
+                    gram,
+                    station_names,
+                    n=1,
+                    cutoff=0.7
+                )
 
                 if close_matches:
-                    score = difflib.SequenceMatcher(None, gram, close_matches[0]).ratio()
+
+                    score = difflib.SequenceMatcher(
+                        None,
+                        gram,
+                        close_matches[0]
+                    ).ratio()
 
                     if score > best_score:
                         best_match = close_matches[0]
                         best_score = score
 
-
     print(f"Best match: {best_match}")
     print(f"Best score: {best_score}")
 
-    station_code = stations_df['CRS'].loc[stations_df['NAME'] == best_match.upper()].values[0]
+    if best_match is None:
+        return None
+
+    match = stations_df.loc[
+        stations_df['NAME'].str.lower() == best_match.lower(),
+        'CRS'
+    ]
+
+    if match.empty:
+        return None
+
+    station_code = match.values[0]
+
     print(f"Station code: {station_code}")
+
     return station_code
 
 def extract_stations(text, last_asked):
@@ -229,8 +261,6 @@ def build_datetime(date_str: str, time_str: str) -> str:
         base = datetime.now()
 
     return base.replace(hour=hour, minute=minute, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
-
-
 
 railcards = {
     "16-17 saver": "16-17",

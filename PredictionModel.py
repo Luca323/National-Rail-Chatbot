@@ -28,7 +28,14 @@ def encode(s_codes):
     else:
         with open('Station_code_enc.pkl', 'rb') as f:
             le = pkl.load(f)
+
+            unknown = [s for s in s_codes if s not in le.classes_]
+
+            if unknown:
+                raise ValueError(f"Unsupported station(s): {unknown}")
+
             encoded_data = le.transform(s_codes)
+
     return encoded_data
 
 
@@ -177,6 +184,7 @@ def predict_delay(
         model = pkl.load(f)
 
     mean_std = pd.read_csv("Station_mean_std.csv")
+
     enc_current, enc_destination = encode([current_station])[0],encode([destination])[0]
 
     valid_routes = select_routes(enc_current, enc_destination, routes)
