@@ -29,23 +29,13 @@ def lem_and_clean(text):
     return out.strip() # remove spaces at beginning/end
 
 def intention_by_keyword(sentence):
-    # returns a type of intention if keyword appears in sentence
     with open("intentions.json") as f:
-        # load the JSON data into a Python dictionary
         intentions = json.load(f)
-
     for word in lem_and_clean(sentence).split():
-        print(word)
-
         for type_of_intention in intentions:
             if word in intentions[type_of_intention]["patterns"]:
-                print("BOT: " + random.choice(intentions[type_of_intention]["responses"]))
-                # Do not change these lines
-                # if type_of_intention == 'greeting' and final_chatbot:
-                #     print("BOT: We can talk about the time, date, and train tickets.\n(Hint: What time is it?)")
-                return type_of_intention
+                return type_of_intention  # remove the print line
     return None
-    # e.g. add ticket type synonyms to intentions
 
 
 def extract_time_date(sentence):

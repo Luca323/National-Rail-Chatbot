@@ -46,13 +46,13 @@ class Intent(Fact):
     value = Field(str, mandatory=True)
 
 class Booking(Fact):
-    origin       = Field(str,  default=None)
-    destination  = Field(str,  default=None)
-    date         = Field(str,  default=None)
-    time         = Field(str,  default=None)
-    ticket_type  = Field(str,  default=None)
-    return_date  = Field(str,  default=None)
-    return_time  = Field(str,  default=None)
+    origin       = Field(object,  default=None)
+    destination  = Field(object,  default=None)
+    date         = Field(object,  default=None)
+    time         = Field(object,  default=None)
+    ticket_type  = Field(object,  default=None)
+    return_date  = Field(object,  default=None)
+    return_time  = Field(object,  default=None)
     adults       = Field(int,  default=1)
     children     = Field(int,  default=0)
     railcard     = Field(object,  default=None)
@@ -80,8 +80,7 @@ class BookingEngine(KnowledgeEngine):
 
     @Rule(Intent(value='greeting'), salience=100)
     def handle_greeting(self):
-        self.reply("Hello! I can help you find the cheapest train ticket. "
-                    "Where would you like to travel?")
+        self.reply("Hello! I can help you find the cheapest train ticket.")
         self.retract_by_type(Intent)
 
     @Rule(Intent(value="thanks"), salience=100)
@@ -105,19 +104,27 @@ class BookingEngine(KnowledgeEngine):
         self.declare(Booking())
         self.retract_by_type(Intent)
 
-    @Rule(UserInput(), NOT(Booking()), NOT(Delayed()), NOT(DelayJourney()),
-          NOT(Intent(value="goodbye")), salience=95)
-    def auto_start_booking(self):
+    @Rule(AS.ui << UserInput(text=MATCH.text), NOT(Booking()), NOT(Delayed()),
+          NOT(DelayJourney()), NOT(Intent(value="goodbye")), salience=95)
+    def auto_start_booking(self, ui, text):
+        self.retract(ui)
         self.declare(Booking())
+        self.declare(UserInput(text=text))
 
     @Rule(
         AS.ui << UserInput(text=MATCH.text), AS.bk << Booking(),
-        salience=80
+        salience=96
     )
     def extract_entities(self, ui, bk, text):
         updates = {}
 
-        #Dates and time
+        # ── Ticket type ──────────────────────────────────────────────────────────
+        if not bk["ticket_type"]:
+            tt = check_ticket(text)
+            if tt:
+                updates["ticket_type"] = tt
+
+        # Dates and time
         spacy_dates, spacy_times = extract_time_date(text)
         parsed_date = next((parse_date(d) for d in spacy_dates if parse_date(d)), None)
         if not parsed_date:
@@ -129,8 +136,11 @@ class BookingEngine(KnowledgeEngine):
 
         asking = self.current_asking()
 
+        # Use updates["ticket_type"] if bk["ticket_type"] hasn't been set yet
+        effective_ticket_type = bk["ticket_type"] or updates.get("ticket_type")
+
         is_return_context = (
-                bk["ticket_type"] == "return"
+                effective_ticket_type == "return"
                 and bk["date"]
                 and asking in ("return_date", "return_time")
         )
@@ -146,27 +156,32 @@ class BookingEngine(KnowledgeEngine):
             if parsed_time and not bk["time"]:
                 updates["time"] = parsed_time
 
-            #double check
-            if bk["ticket_type"] == "return" and (bk["time"] or updates.get("time")):
+            # double check
+            if effective_ticket_type == "return" and (bk["time"] or updates.get("time")):
                 all_times = [parse_time(t) for t in spacy_times if parse_time(t)]
                 if len(all_times) >= 2 and not bk["return_time"]:
                     updates["return_time"] = all_times[1]
 
-        #Stations
+        # Stations
         if not bk["origin"] or not bk["destination"]:
             o_crs, d_crs = extract_stations(text, asking)
+
+            if not d_crs and not bk["destination"]:
+                to_match = re.search(r'\bto\s+([a-zA-Z\s]+?)(?:\s+from|\s+on|\s+at|\s+\d|$)', text, re.I)
+                if to_match:
+                    _, d_crs = extract_stations(to_match.group(1).strip(), "destination")
+
+            if not o_crs and not bk["origin"]:
+                from_match = re.search(r'\bfrom\s+([a-zA-Z\s]+?)(?:\s+to|\s+on|\s+at|\s+\d|$)', text, re.I)
+                if from_match:
+                    o_crs, _ = extract_stations(from_match.group(1).strip(), "origin")
+
             if o_crs and not bk["origin"]:
                 updates["origin"] = o_crs
             if d_crs and not bk["destination"]:
                 updates["destination"] = d_crs
 
-        #ticket type
-        if not bk["ticket_type"]:
-            tt = check_ticket(text)
-            if tt:
-                updates["ticket_type"] = tt
-
-        #passengers
+        # passengers
         am = re.search(r"(\d+)\s+adult", text, re.I)
         cm = re.search(r"(\d+)\s+child", text, re.I)
         if am:
@@ -258,7 +273,7 @@ class BookingEngine(KnowledgeEngine):
         AS.ui << UserInput(text=MATCH.text),
         AskingFor(slot="railcard"),
         AS.bk << Booking(),
-        salience=85  # above extract_entities so railcard text isn't also entity-parsed
+        salience=97
     )
     def handle_railcard_answer(self, ui, bk, text):
         no_words = ("no", "none", "don't", "dont", "haven't", "havent", "n/a")
@@ -481,7 +496,7 @@ class BookingEngine(KnowledgeEngine):
         AS.ui << UserInput(text=MATCH.text),
         AS.bk << Booking(),
         AwaitingConfirm(),
-        salience=90
+        salience=100
     )
     def handle_confirmation(self, ui, bk, text):
         self.retract(ui)
