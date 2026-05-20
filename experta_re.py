@@ -96,6 +96,9 @@ class BookingEngine(KnowledgeEngine):
 
     @Rule(Intent(value="delay"), salience=100)
     def handle_delay(self):
+        self.retract_by_type(Booking)
+        self.retract_by_type(BookingComplete)
+        self.retract_by_type(RailcardAsked)
         self.declare(DelayJourney())
         self.retract_by_type(Intent)
 
@@ -389,19 +392,26 @@ class BookingEngine(KnowledgeEngine):
         salience=50
     )
     def run_prediction(self, o, d, cd, r):
-        prediction = predict_delay(
-            current_station=o,
-            destination=d,
-            current_delay=cd,
-            reason=r,
-            hour=datetime.now().hour,
-            day=datetime.now().weekday(),
-            routes=ROUTES
-        )
+        try:
+            prediction = predict_delay(
+                current_station=o,
+                destination=d,
+                current_delay=cd,
+                reason=r,
+                hour=datetime.now().hour,
+                day=datetime.now().weekday(),
+                routes=ROUTES
+            )
 
-        self.declare(
-            DelayPrediction(minutes=round(prediction, 1))
-        )
+            self.declare(
+                DelayPrediction(minutes=round(prediction, 1))
+            )
+        except Exception as e:
+            print("Sorry, I don't have the Information on that Journey")
+            self.reply("Can I help you with anything else?")
+            self.retract_by_type(DelayJourney)
+            self.retract_by_type(DelayPrediction)
+            self.retract_by_type(AskingFor)
 
     @Rule(DelayPrediction(minutes=MATCH.m),
         salience=40)
@@ -505,7 +515,11 @@ class BookingEngine(KnowledgeEngine):
         if any(w in text.lower() for w in ("yes", "yeah", "sure", "ok", "confirm")):
             result = self.search_and_present(bk)
             self.reply(result + "\n\nCan I help you with anything else?")
-            self.declare(BookingComplete())
+            self.retract_by_type(Booking)
+            self.retract_by_type(BookingComplete)
+            self.retract_by_type(RailcardAsked)
+            self.retract_by_type(AskingFor)
+            self.retract_by_type(AwaitingConfirm)
         else:
             self.retract(bk)
             self.retract_by_type(RailcardAsked)
