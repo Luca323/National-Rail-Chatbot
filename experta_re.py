@@ -105,7 +105,8 @@ class BookingEngine(KnowledgeEngine):
         self.declare(Booking())
         self.retract_by_type(Intent)
 
-    @Rule(UserInput(),NOT(Delayed()), NOT(DelayJourney()), NOT(Intent(value="goodbye")), salience=95)
+    @Rule(UserInput(), NOT(Booking()), NOT(Delayed()), NOT(DelayJourney()),
+          NOT(Intent(value="goodbye")), salience=95)
     def auto_start_booking(self):
         self.declare(Booking())
 
@@ -317,6 +318,7 @@ class BookingEngine(KnowledgeEngine):
     @Rule(
         AS.ui << UserInput(text=MATCH.text),
         AS.dj << DelayJourney(),
+        NOT(Booking()),
         salience=85
     )
     def extract_delay_entities(self, ui, dj, text):
@@ -391,14 +393,16 @@ class BookingEngine(KnowledgeEngine):
     def respond_prediction(self, m):
         self.reply(f"Your train is predicted to arrive approximately {m} minutes late.")
         if m > 15:
-            self.reply("You may be entitled to delay recompensation")
+            self.reply("You may be entitled to delay compensation")
 
-        self.reset()
+        self.reply("Can I help you with anything else?")
+        self.retract_by_type(DelayJourney)
+        self.retract_by_type(DelayPrediction)
+        self.retract_by_type(AskingFor)
 
 
     #Final check and summary
-    @staticmethod
-    def summary(bk):
+    def summary(self, bk):
         lines = [
             f"  From : {bk['origin']}",
             f"  To : {bk['destination']}",
@@ -436,12 +440,7 @@ class BookingEngine(KnowledgeEngine):
             "\n\nShall I search for the cheapest ticket? (yes / no)"
         )
 
-    @Rule(
-        AS.ui << UserInput(text=MATCH.text),
-        AS.bk << Booking(),
-        AwaitingConfirm(),
-        salience=90
-    )
+
     def search_and_present(self, bk):
         try:
             xml = api.get_journey(
@@ -490,7 +489,7 @@ class BookingEngine(KnowledgeEngine):
 
         if any(w in text.lower() for w in ("yes", "yeah", "sure", "ok", "confirm")):
             result = self.search_and_present(bk)
-            self.reply(result + "\n\nSay 'book' to search again or 'goodbye' to leave.")
+            self.reply(result + "\n\nCan I help you with anything else?")
             self.declare(BookingComplete())
         else:
             self.retract(bk)
