@@ -3,29 +3,6 @@ from tkinter import *
 from datetime import datetime
 from experta_re import get_startup_msg, get_response
 
-# def send_message(e, txt):
-#     current_time = datetime.now().strftime("%H:%M:%S")
-#
-#     user_msg = f"[{current_time}] You -> {e.get()}"
-#     txt.insert(END, "\n" + user_msg)
-#
-#     user = e.get().lower()
-#
-#     # Change these to output whatever is returned by the RE
-#     if (user == "hello"):
-#         bot_msg = f"[{current_time}] Bot -> Hi there, how can I help?"
-#
-#     elif (user == "goodbye"):
-#         bot_msg = f"[{current_time}] Bot -> Thank you for using this service."
-#
-#     else:
-#         bot_msg = f"[{current_time}] Bot -> I don't understand you."
-#
-#     txt.insert(END, "\n" + bot_msg + "\n")
-#
-#     # txt.insert(END, "\n")
-#     txt.see(END) # auto-scroll to newest message
-#     e.delete(0, END) # clear entry field
 
 def add_hyperlink(txt_widget, text, url):
     start = txt_widget.index("end-1c")
@@ -51,7 +28,7 @@ def add_hyperlink(txt_widget, text, url):
         lambda e: txt_widget.config(cursor="")
     )
 
-def build_url(journey):
+def build_url(journey, booking):
     # https://www.nationalrail.co.uk/journey-planner/?
     # type=single
     # &origin=NRW
@@ -62,13 +39,98 @@ def build_url(journey):
     # &leavingMin=00
     # &adults=1&
     # extraTime=0#O
-    url = "https://www.nationalrail.co.uk/"
+    url = r"https://www.nationalrail.co.uk/journey-planner/?"
+
+    dep_date = str(journey.get("departure"))[:10]
+    dep_time = str(journey.get("departure"))[11:16]
+
+    dt = datetime.strptime(f"{dep_date} {dep_time}", "%Y-%m-%d %H:%M")
+
+    formatted_date = dt.strftime("%d%m%y")
+    hour = dt.strftime("%H")
+    minute = dt.strftime("%M")
+
+    # update for actual codes 16-17, 16-25, 26-30, disabled, family & friends, network, senior, "
+    #     "two together, veterans
+    railcard_codes = {
+        "16-17": "TSU%7C1",
+        "16-25": "YNG%7C1",
+        "26-30": "TST%7C1",
+        "disabled": "DIS%7C1",
+        "family & friends": "FAM%7C1",
+        "network": "NEW%7C1",
+        "senior": "SRN%7C1",
+        "two together": "2TR%7C1",
+        "veterans": "VET%7C1"
+    }
 
     # single - https://www.nationalrail.co.uk/journey-planner/?type=single&origin=NRW&destination=SRA&leavingType=departing&leavingDate=270526&leavingHour=16&leavingMin=15&adults=1&railcards=TST%7C1&extraTime=0#O
     # return - https://www.nationalrail.co.uk/journey-planner/?type=return&origin=NRW&destination=SRA&leavingType=departing&leavingDate=270526&leavingHour=16&leavingMin=15&returnType=departing&returnDate=270526&returnHour=18&returnMin=15&adults=1&railcards=TST%7C1&extraTime=0#O
     # open return - https://www.nationalrail.co.uk/journey-planner/?type=open&origin=NRW&destination=SRA&leavingType=departing&leavingDate=270526&leavingHour=16&leavingMin=15&adults=1&railcards=TST%7C1&extraTime=0#O
 
-    # need to look at getting ticket type from jounrey, then build url based on what params are needed
+    # single
+    if booking['ticket_type'] == "one way":
+        url += (f""
+                f"type=single&"
+                f"origin={booking['origin']}&"
+                f"destination={booking['destination']}&"
+                f"leavingType=departing&"
+                f"leavingDate={formatted_date}&"
+                f"leavingHour={hour}&"
+                f"leavingMin={minute}&"
+                f"adults=1&"
+                f"children=0&")
+
+        if booking['railcard']:
+                url += (f"railcards={railcard_codes[booking['railcard']]}&")
+
+        url += (f"extraTime=0#O")
+
+
+    # return
+    elif booking['ticket_type'] == "return":
+        # NEEDS RETURN INFORMATION
+        pass
+
+        #returnType=departing&returnDate=270526&returnHour=18&returnMin=15&
+        url += (f""
+                f"type=return&"
+                f"origin={booking['origin']}&"
+                f"destination={booking['destination']}&"
+                f"leavingType=departing&"
+                f"leavingDate={formatted_date}&"
+                f"leavingHour={hour}&"
+                f"leavingMin={minute}&"
+                f"returnType=departing&"
+                f"returnDate"
+                f"adults=1&"
+                f"children=0&")
+
+        if booking['railcard']:
+            url += (f"railcards={railcard_codes[booking['railcard']]}&")
+
+        url += (f"extraTime=0#O")
+
+    # open return
+    elif booking['ticket_type'] == "open return":
+        # TICKET TYPE NEEDS FIXING - CURRENTLY OPEN RETURN IS COUNTED AS A RETURN
+        url += (f""
+                f"type=open&"
+                f"origin={booking['origin']}&"
+                f"destination={booking['destination']}&"
+                f"leavingType=departing&"
+                f"leavingDate={formatted_date}&"
+                f"leavingHour={hour}&"
+                f"leavingMin={minute}&"
+                f"adults=1&"
+                f"children=0&")
+
+        if booking['railcard']:
+            url += (f"railcards={railcard_codes[booking['railcard']]}&")
+
+        url += (f"extraTime=0#O")
+
+    print(f"URL: {url}")
     return url
 
 
@@ -88,44 +150,59 @@ def send_message(e, txt):
             bot_msg = f"[{current_time}] Bot -> {response}."
             txt.insert(END, "\n" + bot_msg + "\n")
 
-        elif isinstance(response, list):
-            bot_msg = f"[{current_time}] Bot -> Available Trains:"
-            txt.insert(END, "\n" + bot_msg + "\n")
-            txt.update_idletasks()
+        elif isinstance(response, dict):
 
-            for i, j in enumerate(response, 1):
-                print(f"Jounrye: {j}")
+            if response.get("type") == "Error":
+                bot_msg = f"[{current_time}] Bot -> {response['message']}"
+                txt.insert(END, "\n" + bot_msg + "\n")
 
-                dep = str(j.get("departure"))[11:16]
-                arr = str(j.get("arrival"))[11:16]
+            elif response.get("type") == "Error":
+                bot_msg = f"[{current_time}] Bot -> {response['message']}"
+                txt.insert(END, "\n" + bot_msg + "\n")
 
-                print("Depature:::: " + j.get("departure"))
+            else:
+                bot_msg = f"[{current_time}] Bot -> Available Trains:"
+                txt.insert(END, "\n" + bot_msg + "\n")
+                txt.update_idletasks()
 
-                changes = j.get("changes", 0)
+                for i, j in enumerate(response['journeys'], 1):
+                    print(f"Journey: {j}")
 
-                fares = [
-                    f["price_pence"]
-                    for f in j.get("fares", [])
-                    if f.get("price_pence")
-                ]
+                    dep = str(j.get("departure"))[11:16]
+                    arr = str(j.get("arrival"))[11:16]
 
-                cheapest = (
-                    min(fares) / 100
-                    if fares else 0
-                )
 
-                # url = "https://www.nationalrail.co.uk/"
-                url = build_url(j)
+                    print("Depature:::: " + j.get("departure"))
+                    print("Destination:::: " + j.get("arrival"))
+                    bk = response.get("booking")
+                    print("ticket type:::: " + bk['ticket_type'])
 
-                add_hyperlink(
-                    txt,
-                    f"{i}. Depart {dep} -> Arrive {arr} | "
-                    f"{changes} changes | "
-                    f"£{cheapest:.2f}\n",
-                    url
-                )
+                    changes = j.get("changes", 0)
 
-            txt.insert(END, "\n")
+                    fares = [
+                        f["price_pence"]
+                        for f in j.get("fares", [])
+                        if f.get("price_pence")
+                    ]
+
+                    cheapest = (
+                        min(fares) / 100
+                        if fares else 0
+                    )
+
+                    url = build_url(j, bk)
+
+                    add_hyperlink(
+                        txt,
+                        f"{i}. Depart {dep} -> Arrive {arr} | "
+                        f"{changes} changes | "
+                        f"£{cheapest:.2f}\n",
+                        url
+                    )
+
+                    break
+
+                txt.insert(END, "\n")
 
     txt.see(END) # auto-scroll to newest message
     e.delete(0, END) # clear entry field
