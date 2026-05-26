@@ -466,6 +466,44 @@ class BookingEngine(KnowledgeEngine):
         )
 
 
+    # def search_and_present(self, bk):
+    #     try:
+    #         xml = api.get_journey(
+    #             origin_crs=bk["origin"],
+    #             destination_crs=bk["destination"],
+    #             datetime_str=build_datetime(bk["date"], bk["time"]),
+    #             adults=bk["adults"],
+    #             children=bk["children"],
+    #         )
+    #         journeys = NationalRailAPI.parse_journeys(xml)
+    #     except Exception as e:
+    #         return f"Sorry, I couldn't reach National Rail at the moment: {e}"
+    #
+    #     if not journeys:
+    #         return "I couldn't find any trains for that journey. Try a different time or date?"
+    #
+    #     def min_price(j):
+    #         fares = [f["price_pence"] for f in j.get("fares", []) if f.get("price_pence")]
+    #         return min(fares) if fares else float("inf")
+    #
+    #     journeys.sort(key=min_price)
+    #     lines = ["Here are the available trains:\n"]
+    #
+    #
+    #     for i, j in enumerate(journeys[:3], 1):
+    #         dep = j.get("departure", "?")[11:16]
+    #         arr = j.get("arrival", "?")[11:16]
+    #         c = j.get("changes", 0)
+    #         cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
+    #         p = min_price(j)
+    #         ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
+    #         lines.append(f"  {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
+    #
+    #     p0 = min_price(journeys[0])
+    #     if p0 != float("inf"):
+    #         lines.append(f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}")
+    #     return "\n".join(lines)
+
     def search_and_present(self, bk):
         try:
             xml = api.get_journey(
@@ -487,20 +525,23 @@ class BookingEngine(KnowledgeEngine):
             return min(fares) if fares else float("inf")
 
         journeys.sort(key=min_price)
-        lines = ["Here are the available trains:\n"]
-        for i, j in enumerate(journeys[:3], 1):
-            dep = j.get("departure", "?")[11:16]
-            arr = j.get("arrival", "?")[11:16]
-            c = j.get("changes", 0)
-            cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
-            p = min_price(j)
-            ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
-            lines.append(f"  {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
-
-        p0 = min_price(journeys[0])
-        if p0 != float("inf"):
-            lines.append(f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}")
-        return "\n".join(lines)
+        return journeys[:3]
+        # lines = ["Here are the available trains:\n"]
+        #
+        #
+        # for i, j in enumerate(journeys[:3], 1):
+        #     dep = j.get("departure", "?")[11:16]
+        #     arr = j.get("arrival", "?")[11:16]
+        #     c = j.get("changes", 0)
+        #     cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
+        #     p = min_price(j)
+        #     ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
+        #     lines.append(f"  {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
+        #
+        # p0 = min_price(journeys[0])
+        # if p0 != float("inf"):
+        #     lines.append(f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}")
+        # return "\n".join(lines)
 
     @Rule(
         AS.ui << UserInput(text=MATCH.text),
@@ -514,7 +555,9 @@ class BookingEngine(KnowledgeEngine):
 
         if any(w in text.lower() for w in ("yes", "yeah", "sure", "ok", "confirm")):
             result = self.search_and_present(bk)
-            self.reply(result + "\n\nCan I help you with anything else?")
+            # self.reply(result + "\n\nCan I help you with anything else?")
+            self.reply(result)
+            self.reply("Can I help you with anything else?")
             self.retract_by_type(Booking)
             self.retract_by_type(BookingComplete)
             self.retract_by_type(RailcardAsked)
