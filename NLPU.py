@@ -1,13 +1,9 @@
-import difflib
 import json
-import random
 import pandas as pd
-from nltk import ngrams
 import re
 from datetime import datetime, timedelta
 import spacy
 import spacy.cli
-from spacy.matcher import PhraseMatcher
 
 # spacy.cli.download("en_core_web_sm")
 nlp = spacy.load('en_core_web_sm')

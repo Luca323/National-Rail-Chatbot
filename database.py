@@ -2,7 +2,7 @@ import psycopg2
 
 #edit this to connect to local DB. this assumes empty user, localhost is 5432 and database is named chatbot.
 #my password is stan but edit it to whatever yours is.
-DB_STRING = "postgresql://postgres:stan@localhost:5432/chatbot"
+DB_STRING = "postgresql://postgres:liam@localhost:5432/chatbot"
 
 def test_connection():
     try:

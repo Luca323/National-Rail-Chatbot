@@ -34,7 +34,7 @@ def send_message(e, txt):
     current_time = datetime.now().strftime("%H:%M:%S")
 
     user_msg = f"[{current_time}] You -> {e.get()}"
-    txt.insert(END, user_msg)
+    txt.insert(END, "\n" + user_msg)
 
     responses = get_response(e.get())
 

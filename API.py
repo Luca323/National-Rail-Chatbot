@@ -1,6 +1,5 @@
 import requests
 from requests.auth import HTTPBasicAuth
-#llama-server.exe -m models/mistral-7b.gguf -c 2048 --temp 0.3 --repeat_penalty 1.2
 
 class NationalRailAPI:
     def __init__(self):
@@ -114,36 +113,6 @@ class NationalRailAPI:
             })
 
         return journeys
-
-class LlamaWrapper:
-    def __init__(self, base_url="http://localhost:8080"):
-        self.url = f"{base_url}/completion"
-
-    def generate(self, prompt, max_tokens=100, temperature=0.0):
-        payload = {
-            "prompt": prompt,
-            "n_predict": max_tokens,
-            "temperature": temperature,
-            "top_p": 0.9,
-            "repeat_penalty": 1.2,
-            "stop": ["\n", "User:", "DATA:"],
-        }
-
-        response = requests.post(self.url, json=payload)
-
-        if response.status_code != 200:
-            raise Exception(f"LLM error: {response.text}")
-
-        data = response.json()
-        text = data.get("content", "").strip()
-
-        text = text.split("\n")[0].strip()
-
-        if not text or len(text) > 200 or "-" * 5 in text:
-            return "Please rephrase your request so I can help with train bookings."
-
-        return text
-
 
 if __name__ == "__main__":
 
