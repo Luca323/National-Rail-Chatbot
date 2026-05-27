@@ -466,44 +466,6 @@ class BookingEngine(KnowledgeEngine):
         )
 
 
-    # def search_and_present(self, bk):
-    #     try:
-    #         xml = api.get_journey(
-    #             origin_crs=bk["origin"],
-    #             destination_crs=bk["destination"],
-    #             datetime_str=build_datetime(bk["date"], bk["time"]),
-    #             adults=bk["adults"],
-    #             children=bk["children"],
-    #         )
-    #         journeys = NationalRailAPI.parse_journeys(xml)
-    #     except Exception as e:
-    #         return f"Sorry, I couldn't reach National Rail at the moment: {e}"
-    #
-    #     if not journeys:
-    #         return "I couldn't find any trains for that journey. Try a different time or date?"
-    #
-    #     def min_price(j):
-    #         fares = [f["price_pence"] for f in j.get("fares", []) if f.get("price_pence")]
-    #         return min(fares) if fares else float("inf")
-    #
-    #     journeys.sort(key=min_price)
-    #     lines = ["Here are the available trains:\n"]
-    #
-    #
-    #     for i, j in enumerate(journeys[:3], 1):
-    #         dep = j.get("departure", "?")[11:16]
-    #         arr = j.get("arrival", "?")[11:16]
-    #         c = j.get("changes", 0)
-    #         cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
-    #         p = min_price(j)
-    #         ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
-    #         lines.append(f"  {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
-    #
-    #     p0 = min_price(journeys[0])
-    #     if p0 != float("inf"):
-    #         lines.append(f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}")
-    #     return "\n".join(lines)
-
     def search_and_present(self, bk):
         try:
             xml = api.get_journey(
@@ -515,27 +477,142 @@ class BookingEngine(KnowledgeEngine):
             )
             journeys = NationalRailAPI.parse_journeys(xml)
         except Exception as e:
-            return {
-                "type": "Error",
-                "message": f"Sorry, I couldn't reach National Rail at the moment: {e}"
-            }
+            return f"Sorry, I couldn't reach National Rail at the moment: {e}"
 
         if not journeys:
-            return {
-                "type": "Empty",
-                "message": "I couldn't find any trains for that journey. Try a different time or date?"
-            }
+            return "I couldn't find any trains for that journey. Try a different time or date?"
 
         def min_price(j):
             fares = [f["price_pence"] for f in j.get("fares", []) if f.get("price_pence")]
             return min(fares) if fares else float("inf")
 
-        journeys.sort(key=min_price)
+        def build_journey_url(journey):
+            url = r"https://www.nationalrail.co.uk/journey-planner/?"
 
-        return {
-            "booking": bk,
-            "journeys": journeys[:3]
-        }
+            dep_date = str(journey.get("departure"))[:10]
+            dep_time = str(journey.get("departure"))[11:16]
+            dt = datetime.strptime(f"{dep_date} {dep_time}", "%Y-%m-%d %H:%M")
+
+            formatted_date = dt.strftime("%d%m%y")
+            hour = dt.strftime("%H")
+
+            # have to search every 15 minutes, not for exact times
+            minute = int(dt.strftime("%M"))
+            rounded_min = (minute // 15) * 15
+
+            railcard_codes = {
+                "16-17": "TSU%7C1",
+                "16-25": "YNG%7C1",
+                "26-30": "TST%7C1",
+                "disabled": "DIS%7C1",
+                "family & friends": "FAM%7C1",
+                "network": "NEW%7C1",
+                "senior": "SRN%7C1",
+                "two together": "2TR%7C1",
+                "veterans": "VET%7C1"
+            }
+
+            ticket_type = bk["ticket_type"]
+            # single
+            if bk['ticket_type'] == "one way":
+                url += (f""
+                        f"type=single&"
+                        f"origin={bk['origin']}&"
+                        f"destination={bk['destination']}&"
+                        f"leavingType=departing&"
+                        f"leavingDate={formatted_date}&"
+                        f"leavingHour={hour}&"
+                        f"leavingMin={(int(minute) // 15) * 15}&"
+                        f"adults=1&"
+                        f"children=0&")
+
+                if bk['railcard']:
+                    url += (f"railcards={railcard_codes[bk['railcard']]}&")
+
+                url += (f"extraTime=0#O")
+
+
+            # return
+            elif bk['ticket_type'] == "return":
+                # NEEDS RETURN INFORMATION
+                pass
+
+                # returnType=departing&returnDate=270526&returnHour=18&returnMin=15&
+                url += (f""
+                        f"type=return&"
+                        f"origin={bk['origin']}&"
+                        f"destination={bk['destination']}&"
+                        f"leavingType=departing&"
+                        f"leavingDate={formatted_date}&"
+                        f"leavingHour={hour}&"
+                        f"leavingMin={minute}&"
+                        # f"returnType=departing&"
+                        # f"returnDate=300525"
+                        # f"returnHour={return_hour}&"
+                        # f"returnHour={return_min}&"
+                        f"adults=1&"
+                        f"children=0&")
+
+                if bk['railcard']:
+                    url += (f"railcards={railcard_codes[bk['railcard']]}&")
+
+                url += (f"extraTime=0#O")
+
+            # open return
+            elif bk['ticket_type'] == "open return":
+                # https://www.nationalrail.co.uk/journey-planner/?type=open&origin=NRW&destination=SRA&leavingType=departing&leavingDate=280526&leavingHour=13&leavingMin=30&adults=1&railcards=TST%7C1&extraTime=0#O
+                # TICKET TYPE NEEDS FIXING - CURRENTLY OPEN RETURN IS COUNTED AS A RETURN
+                url += (f""
+                        f"type=open&"
+                        f"origin={bk['origin']}&"
+                        f"destination={bk['destination']}&"
+                        f"leavingType=departing&"
+                        f"leavingDate={formatted_date}&"
+                        f"leavingHour={hour}&"
+                        f"leavingMin={minute}&"
+                        f"adults=1&"
+                        f"children=0&")
+
+                if bk['railcard']:
+                    url += (f"railcards={railcard_codes[bk['railcard']]}&")
+
+                url += (f"extraTime=0#O")
+
+            return url
+
+        journeys.sort(key=min_price)
+        # lines = ["Here are the available trains:\n"]
+
+        formatted_journeys = []
+
+        formatted_journeys.append({
+            "msg": "Here are the available trains:\n"
+        })
+
+        for i, j in enumerate(journeys[:3], 1):
+            dep = j.get("departure", "?")[11:16]
+            arr = j.get("arrival", "?")[11:16]
+            c = j.get("changes", 0)
+            cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
+            p = min_price(j)
+            ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
+            # lines.append(f"  {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
+            text = (f" {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
+
+            url = build_journey_url(j)
+            formatted_journeys.append({
+                "text": text,
+                "url": url
+            })
+
+        p0 = min_price(journeys[0])
+        if p0 != float("inf"):
+            # lines.append(f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}")
+            formatted_journeys.append({
+                "cps": f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}"
+            })
+        # return "\n".join(lines)
+        return formatted_journeys
 
     @Rule(
         AS.ui << UserInput(text=MATCH.text),
@@ -549,18 +626,7 @@ class BookingEngine(KnowledgeEngine):
 
         if any(w in text.lower() for w in ("yes", "yeah", "sure", "ok", "confirm")):
             result = self.search_and_present(bk)
-            # self.reply(result + "\n\nCan I help you with anything else?")
-            # self.reply(result)
-
-            if isinstance(result, dict) and result.get("type") == "Error":
-                self.reply(result["message"])
-
-            elif isinstance(result, dict) and result.get("type") == "Empty":
-                self.reply(result["message"])
-
-            elif isinstance(result, dict):
-                self.reply(result)
-
+            self.reply(result)
             self.reply("Can I help you with anything else?")
             self.retract_by_type(Booking)
             self.retract_by_type(BookingComplete)
