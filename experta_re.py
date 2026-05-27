@@ -614,6 +614,7 @@ class BookingEngine(KnowledgeEngine):
         # return "\n".join(lines)
         return formatted_journeys
 
+
     @Rule(
         AS.ui << UserInput(text=MATCH.text),
         AS.bk << Booking(),
@@ -626,7 +627,9 @@ class BookingEngine(KnowledgeEngine):
 
         if any(w in text.lower() for w in ("yes", "yeah", "sure", "ok", "confirm")):
             result = self.search_and_present(bk)
+
             self.reply(result)
+
             self.reply("Can I help you with anything else?")
             self.retract_by_type(Booking)
             self.retract_by_type(BookingComplete)
