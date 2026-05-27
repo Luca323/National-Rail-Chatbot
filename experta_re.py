@@ -472,7 +472,6 @@ class BookingEngine(KnowledgeEngine):
             "\n\nShall I search for the cheapest ticket? (yes / no)"
         )
 
-
     def search_and_present(self, bk):
         try:
             xml = api.get_journey(
@@ -483,6 +482,18 @@ class BookingEngine(KnowledgeEngine):
                 children=bk["children"],
             )
             journeys = NationalRailAPI.parse_journeys(xml)
+
+            return_journeys = []
+            if bk["ticket_type"] == "return" and bk["return_date"] and bk["return_time"]:
+                xml_return = api.get_journey(
+                    origin_crs=bk["destination"],
+                    destination_crs=bk["origin"],
+                    datetime_str=build_datetime(bk["return_date"], bk["return_time"]),
+                    adults=bk["adults"],
+                    children=bk["children"],
+                )
+                return_journeys = NationalRailAPI.parse_journeys(xml_return)
+
         except Exception as e:
             return f"Sorry, I couldn't reach National Rail at the moment: {e}"
 
@@ -493,8 +504,11 @@ class BookingEngine(KnowledgeEngine):
             fares = [f["price_pence"] for f in j.get("fares", []) if f.get("price_pence")]
             return min(fares) if fares else float("inf")
 
-        def build_journey_url(journey):
+        def build_journey_url(journey, is_return_leg=False):
             url = r"https://www.nationalrail.co.uk/journey-planner/?"
+
+            origin = bk["destination"] if is_return_leg else bk["origin"]
+            destination = bk["origin"] if is_return_leg else bk["destination"]
 
             dep_date = str(journey.get("departure"))[:10]
             dep_time = str(journey.get("departure"))[11:16]
@@ -502,9 +516,8 @@ class BookingEngine(KnowledgeEngine):
 
             formatted_date = dt.strftime("%d%m%y")
             hour = dt.strftime("%H")
-
-            # have to search every 15 minutes, not for exact times
             minute = int(dt.strftime("%M"))
+            rounded_min = f"{(minute // 15) * 15:02d}"
 
             railcard_codes = {
                 "16-17": "TSU%7C1",
@@ -515,87 +528,54 @@ class BookingEngine(KnowledgeEngine):
                 "network": "NEW%7C1",
                 "senior": "SRN%7C1",
                 "two together": "2TR%7C1",
-                "veterans": "VET%7C1"
+                "veterans": "VET%7C1",
             }
 
-            ticket_type = bk["ticket_type"]
-            # single
-            if bk['ticket_type'] == "one way":
-                url += (f""
-                        f"type=single&"
-                        f"origin={bk['origin']}&"
-                        f"destination={bk['destination']}&"
-                        f"leavingType=departing&"
-                        f"leavingDate={formatted_date}&"
-                        f"leavingHour={hour}&"
-                        f"leavingMin={(int(minute) // 15) * 15:02d}&"
-                        f"adults=1&"
-                        f"children=0&")
+            if bk["ticket_type"] == "one way":
+                url += (
+                    f"type=single&"
+                    f"origin={origin}&"
+                    f"destination={destination}&"
+                    f"leavingType=departing&"
+                    f"leavingDate={formatted_date}&"
+                    f"leavingHour={hour}&"
+                    f"leavingMin={rounded_min}&"
+                    f"adults={bk['adults']}&"
+                    f"children={bk['children']}&"
+                )
+            elif bk["ticket_type"] == "return":
+                url += (
+                    f"type=return&"
+                    f"origin={origin}&"
+                    f"destination={destination}&"
+                    f"leavingType=departing&"
+                    f"leavingDate={formatted_date}&"
+                    f"leavingHour={hour}&"
+                    f"leavingMin={rounded_min}&"
+                    f"adults={bk['adults']}&"
+                    f"children={bk['children']}&"
+                )
+            elif bk["ticket_type"] == "open return":
+                url += (
+                    f"type=open&"
+                    f"origin={origin}&"
+                    f"destination={destination}&"
+                    f"leavingType=departing&"
+                    f"leavingDate={formatted_date}&"
+                    f"leavingHour={hour}&"
+                    f"leavingMin={rounded_min}&"
+                    f"adults={bk['adults']}&"
+                    f"children={bk['children']}&"
+                )
 
-                if bk['railcard']:
-                    url += (f"railcards={railcard_codes[bk['railcard']]}&")
+            if bk["railcard"]:
+                url += f"railcards={railcard_codes[bk['railcard']]}&"
 
-                url += (f"extraTime=0#O")
-
-
-            # return
-            elif bk['ticket_type'] == "return":
-                # TICKET TYPE NEEDS FIXING - API currently does not return correct return details in journeys
-                # however the hyperlinks work
-
-                return_date = "310526"
-                return_hour = "12"
-                return_min = "00"
-
-                # returnType=departing&returnDate=270526&returnHour=18&returnMin=15&
-                url += (f""
-                        f"type=return&"
-                        f"origin={bk['origin']}&"
-                        f"destination={bk['destination']}&"
-                        f"leavingType=departing&"
-                        f"leavingDate={formatted_date}&"
-                        f"leavingHour={hour}&"
-                        f"leavingMin={(int(minute) // 15) * 15:02d}&"
-                        f"returnType=departing&"
-                        f"returnDate={return_date}"
-                        f"returnHour={return_hour}&"
-                        f"returnHour={return_min}&"
-                        f"adults=1&"
-                        f"children=0&")
-
-                if bk['railcard']:
-                    url += (f"railcards={railcard_codes[bk['railcard']]}&")
-
-                url += (f"extraTime=0#O")
-
-            # open return
-            elif bk['ticket_type'] == "open return":
-                # TICKET TYPE NEEDS FIXING - API currently does not return correct open return details in journeys
-                # however the hyperlinks work
-                url += (f""
-                        f"type=open&"
-                        f"origin={bk['origin']}&"
-                        f"destination={bk['destination']}&"
-                        f"leavingType=departing&"
-                        f"leavingDate={formatted_date}&"
-                        f"leavingHour={hour}&"
-                        f"leavingMin={(int(minute) // 15) * 15:02d}&"
-                        f"adults=1&"
-                        f"children=0&")
-
-                if bk['railcard']:
-                    url += (f"railcards={railcard_codes[bk['railcard']]}&")
-
-                url += (f"extraTime=0#O")
-
+            url += "extraTime=0#O"
             return url
 
         journeys.sort(key=min_price)
-
-        formatted_journeys = []
-        formatted_journeys.append({
-            "msg": "Here are the available trains:\n"
-        })
+        formatted_journeys = [{"msg": "Here are the available trains:\n"}]
 
         for i, j in enumerate(journeys[:3], 1):
             dep = j.get("departure", "?")[11:16]
@@ -603,15 +583,10 @@ class BookingEngine(KnowledgeEngine):
             c = j.get("changes", 0)
             cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
             p = min_price(j)
-            p = p * (1 - get_discount(bk['railcard']))
-
             ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
-            text = (f" {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
-
-            url = build_journey_url(j)
             formatted_journeys.append({
-                "text": text,
-                "url": url
+                "text": f" {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}",
+                "url": build_journey_url(j)
             })
 
         p0 = min_price(journeys[0])
@@ -619,6 +594,29 @@ class BookingEngine(KnowledgeEngine):
             formatted_journeys.append({
                 "cps": f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}"
             })
+
+        if return_journeys:
+            return_journeys.sort(key=min_price)
+            formatted_journeys.append({"msg": "\nReturn journeys:\n"})
+
+            for i, j in enumerate(return_journeys[:3], 1):
+                dep = j.get("departure", "?")[11:16]
+                arr = j.get("arrival", "?")[11:16]
+                c = j.get("changes", 0)
+                cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
+                p = min_price(j)
+                ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
+                formatted_journeys.append({
+                    "text": f" {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}",
+                    "url": build_journey_url(j, is_return_leg=True)
+                })
+
+            p0r = min_price(return_journeys[0])
+            if p0r != float("inf"):
+                formatted_journeys.append({
+                    "cps": f"\nCheapest return: {return_journeys[0].get('departure', '?')[11:16]} at £{p0r / 100:.2f}"
+                })
+
         return formatted_journeys
 
     @Rule(
