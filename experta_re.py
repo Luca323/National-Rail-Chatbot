@@ -531,7 +531,7 @@ class BookingEngine(KnowledgeEngine):
                 "veterans": "VET%7C1",
             }
 
-            if bk["ticket_type"] == "one way":
+            if bk["ticket_type"] == "one way" or bk['ticket_type'] == "return":
                 url += (
                     f"type=single&"
                     f"origin={origin}&"
@@ -543,18 +543,18 @@ class BookingEngine(KnowledgeEngine):
                     f"adults={bk['adults']}&"
                     f"children={bk['children']}&"
                 )
-            elif bk["ticket_type"] == "return":
-                url += (
-                    f"type=return&"
-                    f"origin={origin}&"
-                    f"destination={destination}&"
-                    f"leavingType=departing&"
-                    f"leavingDate={formatted_date}&"
-                    f"leavingHour={hour}&"
-                    f"leavingMin={rounded_min}&"
-                    f"adults={bk['adults']}&"
-                    f"children={bk['children']}&"
-                )
+            # elif bk["ticket_type"] == "return":
+            #     url += (
+            #         f"type=return&"
+            #         f"origin={origin}&"
+            #         f"destination={destination}&"
+            #         f"leavingType=departing&"
+            #         f"leavingDate={formatted_date}&"
+            #         f"leavingHour={hour}&"
+            #         f"leavingMin={rounded_min}&"
+            #         f"adults={bk['adults']}&"
+            #         f"children={bk['children']}&"
+            #     )
             elif bk["ticket_type"] == "open return":
                 url += (
                     f"type=open&"

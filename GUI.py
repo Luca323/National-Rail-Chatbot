@@ -34,7 +34,7 @@ def send_message(e, txt):
     current_time = datetime.now().strftime("%H:%M:%S")
 
     user_msg = f"[{current_time}] You -> {e.get()}"
-    txt.insert(END, "\n" + user_msg)
+    txt.insert(END, user_msg)
 
     responses = get_response(e.get())
 
@@ -43,7 +43,7 @@ def send_message(e, txt):
     for response in responses:
         if isinstance(response, str):
             bot_msg = f"[{current_time}] Bot -> {response}."
-            txt.insert(END, "\n" + bot_msg + "\n")
+            txt.insert(END, "\n\n" + bot_msg + "\n")
 
         # for journey hyperlinks
         elif isinstance(response, list):
@@ -52,10 +52,10 @@ def send_message(e, txt):
                     add_hyperlink(txt, link["text"] + "\n", link["url"])
                 else:
                     if "cps" in link:
-                        txt.insert(END, "\n" + link["cps"] + "\n")
+                        txt.insert(END, "\n" + link["cps"])
                     else:
                         bot_msg = f"[{current_time}] Bot -> {link['msg']}."
-                        txt.insert(END, "\n" + bot_msg + "\n")
+                        txt.insert(END, "\n\n" + bot_msg + "\n")
 
             txt.insert(END, "\n")
 

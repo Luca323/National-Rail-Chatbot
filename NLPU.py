@@ -115,45 +115,6 @@ def get_station(user_input):
     print(best_crs)
     return best_crs
 
-
-"""
-station_names = stations_df['NAME'].str.lower().tolist() # get list of stations from df
-
-def get_station(userInput):
-    text = userInput.lower()
-    best_match = None
-    best_score = 0
-
-    # Whole-word match, longest name first
-    for station in sorted(station_names, key=len, reverse=True):
-        pattern = r'\b' + re.escape(station) + r'\b'
-        if re.search(pattern, text):
-            best_match = station
-            break
-
-    # Fuzzy n-gram match
-    if best_match is None:
-        for i in range(3, 0, -1):  # try trigrams first, then bigrams, then unigrams
-            for grams in ngrams(text.split(), n=i):
-                gram = ' '.join(grams)
-                close_matches = difflib.get_close_matches(gram, station_names, n=1, cutoff=0.7)
-                if close_matches:
-                    score = difflib.SequenceMatcher(None, gram, close_matches[0]).ratio()
-                    score += len(gram.split()) * 0.01  # bonus for longer matches
-                    if score > best_score:
-                        best_match = close_matches[0]
-                        best_score = score
-            if best_match:
-                break  # stop once a trigram/bigram level finds something
-
-    if best_match is None:
-        return None
-
-    matches = stations_df['CRS'].loc[stations_df['NAME'] == best_match.upper()].values
-    print(matches[0])
-    return matches[0] if len(matches) > 0 else None
-"""
-
 def extract_stations(text, last_asked):
     origin_crs, dest_crs = None, None
 
@@ -197,6 +158,9 @@ def extract_stations(text, last_asked):
                 dest_crs = get_station(text)
             except Exception:
                 pass
+
+    if origin_crs == dest_crs:
+        dest_crs = None
 
     return origin_crs, dest_crs
 
