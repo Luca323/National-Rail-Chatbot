@@ -1,7 +1,7 @@
 import pandas as pd
 import xgboost as xgb
 import pickle as pkl
-from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_squared_error
 import os
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import RandomizedSearchCV, train_test_split
@@ -146,6 +146,8 @@ def extract_routes(stops: pd.Series) -> dict:
             if route not in routes.values():
                 routes[num_routes] = route
                 num_routes += 1
+                routes[num_routes] = route[::-1] # add reversed version so it can go WAT -> WEY as well
+                num_routes += 1
             route = []  # reset so we capture the next WEY->WAT run too
         else:
             route.append(stop)
@@ -268,4 +270,5 @@ if __name__ == '__main__':
         pkl.dump(model, f)
 
     print('Model saved')
-'''
+    
+    '''
