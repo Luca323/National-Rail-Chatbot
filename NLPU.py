@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta
 import spacy
 import spacy.cli
+from spacy.matcher import PhraseMatcher
 
 # spacy.cli.download("en_core_web_sm")
 nlp = spacy.load('en_core_web_sm')
@@ -221,34 +222,71 @@ def build_datetime(date_str: str, time_str: str) -> str:
     return base.replace(hour=hour, minute=minute, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
 
 railcards = {
-    "16-17 saver": "16-17",
-    "16-25 railcard": "16-25",
-    "26-30 railcard": "26-30",
-    "disabled persons railcard": "disabled",
-    "family & friends railcard": "f&f",
-    "network railcard": "network",
-    "senior railcard": "senior",
-    "two together railcard": "2together",
-    "veterans railcard": "veteran"
+    "16-17": [
+        "16-17 saver",
+        "16-17 railcard",
+        "16 17 railcard"
+    ],
+
+    "16-25": [
+        "16-25 railcard",
+        "16 25 railcard",
+        "young persons railcard"
+    ],
+
+    "26-30": [
+        "26-30 railcard",
+        "26 30 railcard"
+    ],
+
+    "disabled": [
+        "disabled persons railcard",
+        "disabled railcard"
+    ],
+
+    "f&f": [
+        "family and friends railcard",
+        "family & friends railcard"
+    ],
+
+    "network": [
+        "network railcard"
+    ],
+
+    "senior": [
+        "senior railcard",
+        "senior"
+    ],
+
+    "2together": [
+        "two together railcard",
+        "two together"
+    ],
+
+    "veteran": [
+        "veterans railcard",
+        "veteran railcard"
+    ]
 }
 
+def normalise_rc_input(text):
+    return (text.lower().replace("-", " "))
+
 def railcard_choice(userInput):
-    # get the railcard from an uncleaned user input
-    doc = nlp(userInput.lower())
+    print("RAILCARD INPUT:", userInput)
+    text = normalise_rc_input(userInput)
 
-    for card in railcards.keys():
-        for token in doc:
-            # ignore stop words and word == "railcard", look for token in railcard keys (types)
-            if not token.is_stop and token.text != "railcard" and token.text in card:
-                print(f"Railcard type: {card}, Code: {railcards[card]}")
-                return railcards[card]
-
+    for code, phrases in railcards.items():
+        for phrase in phrases:
+            if text in normalise_rc_input(phrase):
+                print("CODE: ", code)
+                return code
     return None
 
 def check_ticket(userInput):
     userInput =userInput.lower()
 
-    ticket_types = ["one way", "return", "open return", "open ticket"]
+    ticket_types = ["open return", "one way", "return"]
 
     for ticket in ticket_types:
         if ticket in userInput:

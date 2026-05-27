@@ -38,6 +38,13 @@ RAILCARD_PROMPT = (
     "two together, veterans — or 'no')"
 )
 
+def get_discount(railcard):
+    if railcard == "16-17":
+        return 0.5
+    elif railcard != None and railcard != "16-17":
+        return 1/3
+    return 0
+
 
 class UserInput(Fact):
     text = Field(str, mandatory=True)
@@ -498,7 +505,6 @@ class BookingEngine(KnowledgeEngine):
 
             # have to search every 15 minutes, not for exact times
             minute = int(dt.strftime("%M"))
-            rounded_min = (minute // 15) * 15
 
             railcard_codes = {
                 "16-17": "TSU%7C1",
@@ -534,8 +540,12 @@ class BookingEngine(KnowledgeEngine):
 
             # return
             elif bk['ticket_type'] == "return":
-                # NEEDS RETURN INFORMATION
-                pass
+                # TICKET TYPE NEEDS FIXING - API currently does not return correct return details in journeys
+                # however the hyperlinks work
+
+                return_date = "310526"
+                return_hour = "12"
+                return_min = "00"
 
                 # returnType=departing&returnDate=270526&returnHour=18&returnMin=15&
                 url += (f""
@@ -545,11 +555,11 @@ class BookingEngine(KnowledgeEngine):
                         f"leavingType=departing&"
                         f"leavingDate={formatted_date}&"
                         f"leavingHour={hour}&"
-                        f"leavingMin={minute}&"
-                        # f"returnType=departing&"
-                        # f"returnDate=300525"
-                        # f"returnHour={return_hour}&"
-                        # f"returnHour={return_min}&"
+                        f"leavingMin={(int(minute) // 15) * 15:02d}&"
+                        f"returnType=departing&"
+                        f"returnDate={return_date}"
+                        f"returnHour={return_hour}&"
+                        f"returnHour={return_min}&"
                         f"adults=1&"
                         f"children=0&")
 
@@ -560,8 +570,8 @@ class BookingEngine(KnowledgeEngine):
 
             # open return
             elif bk['ticket_type'] == "open return":
-                # https://www.nationalrail.co.uk/journey-planner/?type=open&origin=NRW&destination=SRA&leavingType=departing&leavingDate=280526&leavingHour=13&leavingMin=30&adults=1&railcards=TST%7C1&extraTime=0#O
-                # TICKET TYPE NEEDS FIXING - CURRENTLY OPEN RETURN IS COUNTED AS A RETURN
+                # TICKET TYPE NEEDS FIXING - API currently does not return correct open return details in journeys
+                # however the hyperlinks work
                 url += (f""
                         f"type=open&"
                         f"origin={bk['origin']}&"
@@ -569,7 +579,7 @@ class BookingEngine(KnowledgeEngine):
                         f"leavingType=departing&"
                         f"leavingDate={formatted_date}&"
                         f"leavingHour={hour}&"
-                        f"leavingMin={minute}&"
+                        f"leavingMin={(int(minute) // 15) * 15:02d}&"
                         f"adults=1&"
                         f"children=0&")
 
@@ -581,10 +591,8 @@ class BookingEngine(KnowledgeEngine):
             return url
 
         journeys.sort(key=min_price)
-        # lines = ["Here are the available trains:\n"]
 
         formatted_journeys = []
-
         formatted_journeys.append({
             "msg": "Here are the available trains:\n"
         })
@@ -595,8 +603,9 @@ class BookingEngine(KnowledgeEngine):
             c = j.get("changes", 0)
             cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
             p = min_price(j)
+            p = p * (1 - get_discount(bk['railcard']))
+
             ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
-            # lines.append(f"  {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
             text = (f" {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}")
 
             url = build_journey_url(j)
@@ -607,11 +616,9 @@ class BookingEngine(KnowledgeEngine):
 
         p0 = min_price(journeys[0])
         if p0 != float("inf"):
-            # lines.append(f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}")
             formatted_journeys.append({
                 "cps": f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}"
             })
-        # return "\n".join(lines)
         return formatted_journeys
 
     @Rule(
