@@ -1,0 +1,19 @@
+-- run these commands in PSQL shell
+-- name the database chatbot
+-- edit the DB_STRING at the top of the database.py file to match whatever your settings are.
+-- the sql defaults are whats currently there, but change "stan" to whatever your superuser postgres password is
+
+CREATE DATABASE chatbot;
+
+CREATE TABLE conversations (
+    id SERIAL PRIMARY KEY,
+    started_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    conversation_id INTEGER REFERENCES conversations(id),
+    sender VARCHAR(256),
+    text TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);

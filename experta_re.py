@@ -10,6 +10,7 @@ for type_name in ['Mapping','MutableMapping','Iterable','MutableSet']:
     if not hasattr(collections, type_name):
         setattr(collections, type_name, getattr(collections.abc, type_name))
 from experta import *
+from database import log_message, start_conversation
 
 api = NationalRailAPI()
 
@@ -202,8 +203,10 @@ class BookingEngine(KnowledgeEngine):
         if updates:
             self.modify(bk, **updates)
             self.retract_by_type(AskingFor)
+            self.retract(ui)
+        elif asking is None:
+            self.retract(ui)
 
-        self.retract(ui)
 
     def current_asking(self):
         for fact in self.facts.values():
@@ -646,6 +649,18 @@ class BookingEngine(KnowledgeEngine):
             self.declare(Booking())
             self.reply("No problem, let's start over.")
 
+    @Rule(
+        AS.ui << UserInput(text=MATCH.text),
+        AS.af << AskingFor(slot=MATCH.slot),
+        salience=1
+    )
+    def fallback_question(self, ui, af, text, slot):
+        self.retract(ui)
+        prompt = SLOT_PROMPTS.get(slot) or DELAY_PROMPTS.get(slot) or RAILCARD_PROMPT
+        self.reply(f"Sorry, I didn't understand that. Could you rephrase? {prompt}")
+
+
+
 
 
 # start engine for GUI
@@ -653,14 +668,24 @@ engine = BookingEngine()
 engine.reset()
 
 def get_startup_msg():
+    global current_conversation_id              #database integration
     engine._replies = []
     engine.declare(Intent(value="greeting"))
     engine.run()
+
+    #database integration
+    current_conversation_id = start_conversation()
+    for r in engine._replies:
+        log_message(current_conversation_id, "bot", r)
 
     return engine._replies.copy()
 
 def get_response(user_input):
     engine._replies = []
+
+    #database integration
+    if current_conversation_id is not None:
+        log_message(current_conversation_id, "user", user_input)
 
     try:
         intent = intention_by_keyword(user_input)
@@ -676,6 +701,11 @@ def get_response(user_input):
     engine.run()
 
     replies = engine._replies.copy()
+
+    #database integration
+    if current_conversation_id is not None:
+        for r in replies:
+            log_message(current_conversation_id, "bot", r)
 
     return replies
 
