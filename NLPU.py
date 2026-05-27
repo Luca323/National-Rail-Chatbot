@@ -59,6 +59,64 @@ def extract_time_date(sentence):
 
 
 stations_df = pd.read_csv("StationNameAndCode.csv")
+
+def normalise_station(text):
+    return (
+        text.lower()
+        .replace("&", "and")
+        .replace("-", " ")
+        .replace(".", " ")
+        .replace(",", " ")
+        .replace("station", " ")
+        .strip()
+    )
+
+stations_df['NORM'] = stations_df['NAME'].apply(normalise_station)
+
+def score_station(input_text, station_name):
+    input = normalise_station(input_text)
+    station = normalise_station(station_name)
+
+    # exact match
+    if input == station:
+        return 1000
+
+    input_tokens = set(input.split())
+    station_tokens = set(station.split())
+
+    if input_tokens.issubset(station_tokens):
+        return 900 + len(input_tokens)
+
+    overlap = len(input_tokens & station_tokens)
+    union = len(station_tokens)
+
+    if union == 0:
+        return 0
+
+    return (overlap / union) * 600
+
+def get_station(user_input):
+    best_crs = None
+    best_score = 0
+
+    for _, row in stations_df.iterrows():
+        name = row['NORM']
+        crs = row['CRS']
+
+        score = score_station(user_input, name)
+
+        if score > best_score:
+            best_score = score
+            best_crs = crs
+
+    if best_score < 350:
+        return None
+
+    print(best_crs)
+    return best_crs
+
+
+"""
 station_names = stations_df['NAME'].str.lower().tolist() # get list of stations from df
 
 def get_station(userInput):
@@ -92,7 +150,9 @@ def get_station(userInput):
         return None
 
     matches = stations_df['CRS'].loc[stations_df['NAME'] == best_match.upper()].values
+    print(matches[0])
     return matches[0] if len(matches) > 0 else None
+"""
 
 def extract_stations(text, last_asked):
     origin_crs, dest_crs = None, None
@@ -295,33 +355,13 @@ def check_ticket(userInput):
 
     return None
 
-"""
- NOTES
-prep sentences for nlp ->lem and clean text
-
-check intention by keyword
--> create an intentions json for typical patterns+responses
-
-compare user sentence to premade sentences to generate a response by similarity of text
-
-get info for travelling date and time, departure station, destination station, single or return etc.
-
-ticket details needed:
-- origin station -> 
-- destination station -> 
-- date -> ner
-- time -> ner
-- ticket type (single, return, open-return, etc) -> nlp
-- no of tickets (e.g. adult, children) ->
-- railcard -> 
-"""
 
 if __name__ == "__main__":
 
     sentences = ["Hello, I would like to book a train ticket to Norwich!",
                  "Hey, I want to travel to York next friday!",
                  "Thank you for helping me book my single ticket to west ham.",
-                 "I want a return ticket to London Liverpool Street on Tuesday",
+                 "I want a return ticket to Liverpool Street on Tuesday",
                  "I want to book a train for Monday 20th April at 14:00 to travel to Selhurst.",
                  "I want to travel to Portsmouth and Southsea on 30th April.",
                  "I want to travel to Portsmouth Harbour with a 16-25. railcard.",
@@ -331,10 +371,10 @@ if __name__ == "__main__":
 
     for s in sentences:
         print(f"\nSentence: {s}\nCleaned text: {lem_and_clean(s)}")
-        extract_time_date(lem_and_clean(s))
+        # extract_time_date(lem_and_clean(s))
         get_station(s)
-        check_ticket(s)
-        railcard_choice(s)
+        # check_ticket(s)
+        # railcard_choice(s)
 
         # intention_by_keyword(s)
 

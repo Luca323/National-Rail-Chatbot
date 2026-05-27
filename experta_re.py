@@ -583,6 +583,7 @@ class BookingEngine(KnowledgeEngine):
             c = j.get("changes", 0)
             cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
             p = min_price(j)
+            p = p * (1 - get_discount(bk['railcard']))
             ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
             formatted_journeys.append({
                 "text": f" {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}",
@@ -605,6 +606,7 @@ class BookingEngine(KnowledgeEngine):
                 c = j.get("changes", 0)
                 cs = "direct" if c == 0 else f"{c} change{'s' if c > 1 else ''}"
                 p = min_price(j)
+                p = p * (1 - get_discount(bk['railcard']))
                 ps = f"£{p / 100:.2f}" if p != float("inf") else "N/A"
                 formatted_journeys.append({
                     "text": f" {i}. Depart {dep}  ->  Arrive {arr}  ({cs})  from {ps}",
