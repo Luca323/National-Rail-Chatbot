@@ -4,6 +4,7 @@ from NLPU import (intention_by_keyword, extract_time_date, extract_stations,
                   parse_time, parse_date, build_datetime)
 from PredictionModel import extract_routes, pd, predict_delay
 from datetime import datetime
+import collections
 import collections.abc
 for type_name in ['Mapping','MutableMapping','Iterable','MutableSet']:
     if not hasattr(collections, type_name):
@@ -120,7 +121,7 @@ class BookingEngine(KnowledgeEngine):
     def extract_entities(self, ui, bk, text):
         updates = {}
 
-        # Ticket type
+        # ── Ticket type ──────────────────────────────────────────────────────────
         if not bk["ticket_type"]:
             tt = check_ticket(text)
             if tt:
@@ -548,10 +549,17 @@ class BookingEngine(KnowledgeEngine):
 
         if any(w in text.lower() for w in ("yes", "yeah", "sure", "ok", "confirm")):
             result = self.search_and_present(bk)
+            # self.reply(result + "\n\nCan I help you with anything else?")
             self.reply(result)
 
             if isinstance(result, dict) and result.get("type") == "Error":
                 self.reply(result["message"])
+
+            elif isinstance(result, dict) and result.get("type") == "Empty":
+                self.reply(result["message"])
+
+            elif isinstance(result, dict):
+                self.reply(result)
 
             self.reply("Can I help you with anything else?")
             self.retract_by_type(Booking)
