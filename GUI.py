@@ -54,7 +54,7 @@ def send_message(e, txt):
                     if "cps" in link:
                         txt.insert(END, "\n" + link["cps"] + "\n")
                     else:
-                        bot_msg = f"[{current_time}] Bot -> {link["msg"]}."
+                        bot_msg = f"[{current_time}] Bot -> {link['msg']}."
                         txt.insert(END, "\n" + bot_msg + "\n")
 
             txt.insert(END, "\n")

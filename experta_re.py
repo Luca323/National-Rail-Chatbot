@@ -107,12 +107,12 @@ class BookingEngine(KnowledgeEngine):
         self.declare(Booking())
         self.retract_by_type(Intent)
 
-    @Rule(AS.ui << UserInput(text=MATCH.text), NOT(Booking()), NOT(Delayed()),
-          NOT(DelayJourney()), NOT(Intent(value="goodbye")), salience=95)
-    def auto_start_booking(self, ui, text):
-        self.retract(ui)
-        self.declare(Booking())
-        self.declare(UserInput(text=text))
+    # @Rule(AS.ui << UserInput(text=MATCH.text), NOT(Booking()), NOT(Delayed()),
+    #       NOT(DelayJourney()), NOT(Intent(value="goodbye")), salience=95)
+    # def auto_start_booking(self, ui, text):
+    #     self.retract(ui)
+    #     self.declare(Booking())
+    #     self.declare(UserInput(text=text))
 
     @Rule(
         AS.ui << UserInput(text=MATCH.text), AS.bk << Booking(),
@@ -637,7 +637,7 @@ class BookingEngine(KnowledgeEngine):
             self.retract(bk)
             self.retract_by_type(RailcardAsked)
             self.declare(Booking())
-            self.reply("No problem, let's start over. Where would you like to travel from?")
+            self.reply("No problem, let's start over.")
 
 
 
