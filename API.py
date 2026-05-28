@@ -117,6 +117,6 @@ class NationalRailAPI:
 if __name__ == "__main__":
 
     api = NationalRailAPI()
-    response = api.get_journey("LST", "NRW", "2026-06-14T10:00:00")
+    response = api.get_journey("LST", "NRW", "2026-06-14T10:00:00", adults=2, children=2)
 
     print(api.parse_journeys(response))

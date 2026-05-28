@@ -24,6 +24,8 @@ SLOT_PROMPTS = {
     "ticket_type": "Would you like a one-way, return, or open return ticket?",
     "return_date": "What date would you like to return?",
     "return_time": "What time would you like to return?",
+    "adults": "How many adults are travelling? (16 or over)",
+    "children": "How many children are travelling? (Under 16s)"
 }
 
 DELAY_PROMPTS = {
@@ -74,6 +76,8 @@ class AwaitingConfirm(Fact): pass
 class BookingComplete(Fact): pass
 class SessionDone(Fact):     pass
 class Delayed(Fact): pass
+class PassengersAsked(Fact): pass
+class ChildrenAsked(Fact): pass
 
 class DelayJourney(Fact):
     origin = Field(str, default=None)
@@ -115,12 +119,6 @@ class BookingEngine(KnowledgeEngine):
         self.declare(Booking())
         self.retract_by_type(Intent)
 
-    # @Rule(AS.ui << UserInput(text=MATCH.text), NOT(Booking()), NOT(Delayed()),
-    #       NOT(DelayJourney()), NOT(Intent(value="goodbye")), salience=95)
-    # def auto_start_booking(self, ui, text):
-    #     self.retract(ui)
-    #     self.declare(Booking())
-    #     self.declare(UserInput(text=text))
 
     @Rule(
         AS.ui << UserInput(text=MATCH.text), AS.bk << Booking(),
@@ -129,7 +127,7 @@ class BookingEngine(KnowledgeEngine):
     def extract_entities(self, ui, bk, text):
         updates = {}
 
-        # ── Ticket type ──────────────────────────────────────────────────────────
+        #Ticket type
         if not bk["ticket_type"]:
             tt = check_ticket(text)
             if tt:
@@ -193,19 +191,35 @@ class BookingEngine(KnowledgeEngine):
                 updates["destination"] = d_crs
 
         # passengers
+        asking = self.current_asking()
+
         am = re.search(r"(\d+)\s+adult", text, re.I)
         cm = re.search(r"(\d+)\s+child", text, re.I)
+
         if am:
             updates["adults"] = int(am.group(1))
+        elif asking == "adults":
+            m = re.search(r"\d+", text)
+            if m:
+                updates["adults"] = int(m.group())
+
         if cm:
             updates["children"] = int(cm.group(1))
+            self.declare(ChildrenAsked())
+        elif asking == "children":
+            m = re.search(r"\d+", text)
+            if m:
+                updates["children"] = int(m.group())
+                self.declare(ChildrenAsked())
+
+        if am or cm:
+            self.declare(PassengersAsked())
 
         if updates:
             self.modify(bk, **updates)
             self.retract_by_type(AskingFor)
-            self.retract(ui)
-        elif asking is None:
-            self.retract(ui)
+
+        self.retract(ui)
 
 
     def current_asking(self):
@@ -237,6 +251,33 @@ class BookingEngine(KnowledgeEngine):
           NOT(AskingFor()), NOT(AwaitingConfirm()), salience=69)
     def ask_destination(self):
         self.ask_slot(slot='destination')
+
+    @Rule(
+        Booking(),
+        NOT(Booking(time=None)),
+        NOT(PassengersAsked()),
+        NOT(AskingFor()), NOT(AwaitingConfirm()),
+        NOT(DelayJourney()),
+        salience=63
+    )
+    def ask_adults(self):
+        self.declare(PassengersAsked())
+        self.ask_slot(slot="adults")
+
+    @Rule(
+        Booking(),
+        PassengersAsked(),
+        NOT(ChildrenAsked()),
+        NOT(AskingFor(slot="adults")),
+        NOT(Booking(time=None)),
+        NOT(AwaitingConfirm()),
+        NOT(DelayJourney()),
+        NOT(RailcardAsked()),
+        salience=62
+    )
+    def ask_children(self):
+        self.declare(ChildrenAsked())
+        self.ask_slot(slot="children")
 
     @Rule(Booking(ticket_type=None),NOT(DelayJourney()), NOT(Booking(origin=None)), NOT(Booking(destination=None)),
           NOT(AskingFor()), NOT(AwaitingConfirm()), salience=68)
@@ -643,9 +684,14 @@ class BookingEngine(KnowledgeEngine):
             self.retract_by_type(RailcardAsked)
             self.retract_by_type(AskingFor)
             self.retract_by_type(AwaitingConfirm)
+            self.retract_by_type(PassengersAsked)
+            self.retract_by_type(ChildrenAsked)
+
         else:
             self.retract(bk)
             self.retract_by_type(RailcardAsked)
+            self.retract_by_type(PassengersAsked)
+            self.retract_by_type(ChildrenAsked)
             self.declare(Booking())
             self.reply("No problem, let's start over.")
 
