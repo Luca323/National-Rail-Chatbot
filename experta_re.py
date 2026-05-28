@@ -419,33 +419,44 @@ class BookingEngine(KnowledgeEngine):
         updates = {}
         asking = self.current_asking()
 
-        if asking == "delay_origin":
+        if not dj["origin"]:
             o, _ = extract_stations(text, "origin")
             if o:
                 updates["origin"] = o
 
-        elif asking == "delay_destination":
-            _, d = extract_stations(text, "destination")
-            if d:
-                updates["destination"] = d
+        if not dj["destination"]:
+            if "origin" not in updates:
+                _, d = extract_stations(text, "destination")
+                if d and d != dj["origin"] and d != updates.get("origin"):
+                    updates["destination"] = d
 
-        elif asking == "delay_minutes":
-            m = re.search(r"\d+", text)
+        if not dj["current_delay"]:
+            m = re.search(r"(\d+)\s*min", text, re.I) or re.search(r"\b(\d+)\b", text)
             if m:
-                updates["current_delay"] = int(m.group())
+                updates["current_delay"] = int(m.group(1))
 
-        elif asking == "delay_reason":
-            no_words = ("no", "none", "dont", "dont", "havent", "n/a")
-            m = re.search(r"\d+", text)
+        if dj["current_delay"] is not None and dj["reason"] is None and "current_delay" not in updates:
+            no_words = ("no", "none", "dont", "havent", "n/a")
+            m = re.search(r"\b(\d+)\b", text)
             if m:
-                updates["reason"] = int(m.group())
+                updates["reason"] = int(m.group(1))
             elif any(w in text.lower() for w in no_words):
                 updates["reason"] = 0
 
+        asking_to_key = {
+            "delay_origin": "origin",
+            "delay_destination": "destination",
+            "delay_minutes": "current_delay",
+            "delay_reason": "reason"
+        }
+        slot_filled = asking_to_key.get(asking) in updates if asking else True
+
         if updates:
             self.modify(dj, **updates)
-            self.retract_by_type(AskingFor)
-        elif asking is not None:
+            if slot_filled:
+                self.retract_by_type(AskingFor)
+
+        if not slot_filled and asking is not None:
             prompt = DELAY_PROMPTS.get(asking)
             self.reply(f"Sorry, I didn't understand that. {prompt if prompt else 'Could you please rephrase?'}")
 
