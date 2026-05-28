@@ -66,12 +66,12 @@ def send_message(e, txt):
 
 def new_disp():
     window = Tk()
-    window.title("Train Booking Chatbot")
+    window.title("National Rail Chatbot")
     window.geometry("800x600")
     window.configure(bg="#edd080")
 
     # header
-    header = Label(window, text="Train Booking Chatbot", bg="black", fg="white", pady=12)
+    header = Label(window, text="National Rail Chatbot", bg="black", fg="white", pady=12)
     header.pack(fill=X)
 
     # chat frame
@@ -91,7 +91,7 @@ def new_disp():
     start_msg = get_startup_msg()
     for msg in start_msg:
         current_time = datetime.now().strftime("%H:%M:%S")
-        bot_msg = f"[{current_time}] Bot -> {msg}."
+        bot_msg = f"[{current_time}] RailBot -> {msg}."
         chat_box.config(state="normal")
         chat_box.insert(END, "\n" + bot_msg + "\n")
         chat_box.config(state="disabled")

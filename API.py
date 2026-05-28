@@ -1,5 +1,6 @@
 import requests
 from requests.auth import HTTPBasicAuth
+import xml.etree.ElementTree as ET
 
 class NationalRailAPI:
     def __init__(self):
@@ -63,7 +64,6 @@ class NationalRailAPI:
 
     @staticmethod
     def parse_journeys(xml_string):
-        import xml.etree.ElementTree as ET
 
         ns = {
             'soap': 'http://schemas.xmlsoap.org/soap/envelope/',

@@ -225,6 +225,29 @@ def predict_delay(
 
 if __name__ == '__main__':
 
+    data = pd.read_csv("dataset.csv")
+    routes = extract_routes(data['location'])
+
+    features = build_feature_set(data)
+    X, y = features.drop(columns=['arrival_delay', 'departure_delay']), features['departure_delay']
+
+    # tune_hyperparameters(model, X, y) #Already evaluated using test-train split
+    print('Feature Set Built')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    '''
     #Uncomment to test - Example usage
     data = pd.read_csv('dataset.csv')
 
@@ -240,6 +263,7 @@ if __name__ == '__main__':
     )
 
     print(f"Predicted delay at destination: {prediction} minutes")
+    '''
     '''
 
 

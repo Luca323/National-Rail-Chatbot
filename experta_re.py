@@ -568,7 +568,7 @@ class BookingEngine(KnowledgeEngine):
                 "16-25": "YNG%7C1",
                 "26-30": "TST%7C1",
                 "disabled": "DIS%7C1",
-                "family & friends": "FAM%7C1",
+                "f&f": "FAM%7C1",
                 "network": "NEW%7C1",
                 "senior": "SRN%7C1",
                 "two together": "2TR%7C1",
@@ -637,7 +637,7 @@ class BookingEngine(KnowledgeEngine):
         p0 = min_price(journeys[0])
         if p0 != float("inf"):
             formatted_journeys.append({
-                "cps": f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{p0 / 100:.2f}"
+                "cps": f"\nCheapest: {journeys[0].get('departure', '?')[11:16]} at £{((p0 / 100) * (1 - get_discount(bk['railcard']))):.2f}",
             })
 
         if return_journeys:
