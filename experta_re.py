@@ -239,6 +239,9 @@ class BookingEngine(KnowledgeEngine):
         if updates:
             self.modify(bk, **updates)
             self.retract_by_type(AskingFor)
+        elif asking is not None:
+            prompt = SLOT_PROMPTS.get(asking) or RAILCARD_PROMPT
+            self.reply(f"Sorry, I didn't understand that. {prompt if prompt else 'Could you please rephrase?'}")
 
         self.retract(ui)
 
@@ -442,6 +445,9 @@ class BookingEngine(KnowledgeEngine):
         if updates:
             self.modify(dj, **updates)
             self.retract_by_type(AskingFor)
+        elif asking is not None:
+            prompt = DELAY_PROMPTS.get(asking)
+            self.reply(f"Sorry, I didn't understand that. {prompt if prompt else 'Could you please rephrase?'}")
 
         self.retract(ui)
 
