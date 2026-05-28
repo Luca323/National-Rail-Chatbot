@@ -196,13 +196,13 @@ def predict_delay(
     end_idx = route.index(enc_destination)
     remaining_route = route[start_idx + 1:end_idx + 1]
 
-    predicted_delay = current_delay  # sensible default if route is empty
+    predicted_delay = current_delay  #sensible default option if route is empty
 
     for station_enc in remaining_route:
         stats = mean_std[mean_std['Station_code_enc'] == station_enc]
 
         if stats.empty:
-            mean_delay = 0.0
+            mean_delay = 0.0 # if stats dont exist for that station
             std_delay = 0.0
         else:
             mean_delay = stats['mean_station_delay'].values[0]
@@ -224,8 +224,6 @@ def predict_delay(
 
 
 if __name__ == '__main__':
-
-    # Uncomment to create files
 
     years = [2022, 2023, 2024, 2025]
     dfs = []

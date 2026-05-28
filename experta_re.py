@@ -190,27 +190,48 @@ class BookingEngine(KnowledgeEngine):
             if d_crs and not bk["destination"]:
                 updates["destination"] = d_crs
 
-        # passengers
+        #passengers
         asking = self.current_asking()
 
         am = re.search(r"(\d+)\s+adult", text, re.I)
         cm = re.search(r"(\d+)\s+child", text, re.I)
 
+        #detect explicit no children as this is more fickle
+        no_children = re.search(
+            r"\b(no|none|zero)\s+children?\b",
+            text,
+            re.I
+        )
+
         if am:
             updates["adults"] = int(am.group(1))
-        elif asking == "adults":
-            m = re.search(r"\d+", text)
-            if m:
-                updates["adults"] = int(m.group())
 
-        if cm:
+        elif asking == "adults":
+
+            if re.search(r"\b(no|none|zero)\b", text, re.I): #searches 'none or no adults' and treats it as 0
+                updates["adults"] = 0
+
+            else:
+                m = re.search(r"\d+", text)
+                if m:
+                    updates["adults"] = int(m.group())
+        if no_children:
+            updates["children"] = 0
+            self.declare(ChildrenAsked())
+
+        elif cm:
             updates["children"] = int(cm.group(1))
             self.declare(ChildrenAsked())
+
         elif asking == "children":
-            m = re.search(r"\d+", text)
-            if m:
-                updates["children"] = int(m.group())
+            if re.search(r"\b(no|none|zero)\b", text, re.I):
+                updates["children"] = 0
                 self.declare(ChildrenAsked())
+            else:
+                m = re.search(r"\d+", text)
+                if m:
+                    updates["children"] = int(m.group())
+                    self.declare(ChildrenAsked())
 
         if am or cm:
             self.declare(PassengersAsked())
