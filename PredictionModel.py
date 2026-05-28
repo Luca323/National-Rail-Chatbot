@@ -225,27 +225,55 @@ def predict_delay(
 
 if __name__ == '__main__':
 
+    # Uncomment to create files
+
+    years = [2022, 2023, 2024, 2025]
+    dfs = []
+
+    for y in years:
+        temp = pd.read_csv(f'./data/{y}_service_details.csv')
+        dfs.append(temp)
+
+    data = pd.concat(dfs, ignore_index=True)
+    station_counts = data['location'].value_counts()
+    frequent_stations = station_counts[station_counts >= 100].index
+    data = data[data['location'].isin(frequent_stations)]  # Remove all low frequency stations
+    data.to_csv('dataset.csv')
+    print('Large Dataset Built')
+
+    features = build_feature_set(data)
+    X, y = features.drop(columns=['arrival_delay', 'departure_delay']), features['departure_delay']
+    # tune_hyperparameters(model, X, y) #Already evaluated using test-train split
+    print('Feature Set Built')
+
+    model = xgb.XGBRegressor(n_estimators=50, max_depth=3, learning_rate=0.1, subsample=0.8)
+    model.fit(X, y)
+
+    with open('Prediction_Model.pkl', 'wb') as f:
+        pkl.dump(model, f)
+
+    print('Model saved')
+
+    '''
     data = pd.read_csv("dataset.csv")
     routes = extract_routes(data['location'])
 
     features = build_feature_set(data)
+    print("Features Built")
     X, y = features.drop(columns=['arrival_delay', 'departure_delay']), features['departure_delay']
 
-    # tune_hyperparameters(model, X, y) #Already evaluated using test-train split
-    print('Feature Set Built')
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    model = xgb.XGBRegressor(n_estimators=50, max_depth=3, learning_rate=0.1, subsample=0.8)
 
+    model.fit(X_train, y_train)
 
+    y_pred = model.predict(X_test)
 
+    MSE = mean_squared_error(y_test, y_pred)
 
-
-
-
-
-
-
-
-
-
+    print(f"Current MSE: {MSE}")
+    #Last recorded: 0.23303371684775112
+    '''
 
     '''
     #Uncomment to test - Example usage
@@ -263,36 +291,4 @@ if __name__ == '__main__':
     )
 
     print(f"Predicted delay at destination: {prediction} minutes")
-    '''
-    '''
-
-
-    years = [2022,2023,2024,2025]
-    dfs = []
-
-    for y in years:
-        temp = pd.read_csv(f'./data/{y}_service_details.csv')
-        dfs.append(temp)
-
-    data = pd.concat(dfs, ignore_index=True)
-    station_counts = data['location'].value_counts()
-    frequent_stations = station_counts[station_counts >= 100].index
-    data = data[data['location'].isin(frequent_stations)] #Remove all low frequency stations
-    data.to_csv('dataset.csv')
-    print('Large Dataset Built')
-
-
-    features = build_feature_set(data)
-    X, y = features.drop(columns=['arrival_delay', 'departure_delay']), features['departure_delay']
-    #tune_hyperparameters(model, X, y) #Already evaluated using test-train split
-    print('Feature Set Built')
-
-    model = xgb.XGBRegressor(n_estimators=50, max_depth=3, learning_rate=0.1, subsample=0.8)
-    model.fit(X, y)
-
-    with open('Prediction_Model.pkl', 'wb') as f:
-        pkl.dump(model, f)
-
-    print('Model saved')
-    
     '''
