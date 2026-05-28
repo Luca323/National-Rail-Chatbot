@@ -479,7 +479,7 @@ class BookingEngine(KnowledgeEngine):
                 DelayPrediction(minutes=round(prediction, 1))
             )
         except Exception as e:
-            print("Sorry, I don't have the Information on that Journey")
+            self.reply("Sorry, I don't have the Information on that Journey")
             self.reply("Can I help you with anything else?")
             self.retract_by_type(DelayJourney)
             self.retract_by_type(DelayPrediction)
@@ -488,7 +488,7 @@ class BookingEngine(KnowledgeEngine):
     @Rule(DelayPrediction(minutes=MATCH.m),
         salience=40)
     def respond_prediction(self, m):
-        self.reply(f"Your train is predicted to arrive approximately {m} minutes late.")
+        self.reply(f"Your train is predicted to arrive approximately {m} minutes late")
         if m > 15:
             self.reply("You may be entitled to delay compensation")
 

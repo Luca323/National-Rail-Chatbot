@@ -190,7 +190,7 @@ def predict_delay(
     enc_current, enc_destination = encode([current_station])[0],encode([destination])[0]
 
     valid_routes = select_routes(enc_current, enc_destination, routes)
-    route = valid_routes[0]
+    route = max(valid_routes, key=len) #Assume the longest possible route
 
     start_idx = route.index(enc_current)
     end_idx = route.index(enc_destination)
