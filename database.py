@@ -60,5 +60,27 @@ def get_conversation(conversation_id):
     connection.close()
     return rows
 
+
+def list_conversations(limit=50):
+    #most-recent conversations with the user's first message as a preview
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT c.id, c.started_at,
+               (SELECT m.text FROM messages m
+                WHERE m.conversation_id = c.id AND m.sender = 'user'
+                ORDER BY m.created_at LIMIT 1) AS preview
+        FROM conversations c
+        ORDER BY c.started_at DESC
+        LIMIT %s;
+        """,
+        (limit,)
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    connection.close()
+    return rows
+
 if __name__ == "__main__":
     print(test_connection())

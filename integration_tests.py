@@ -29,6 +29,8 @@ def test_full_booking_reaches_confirmation():
     get_response("one way")
     get_response("tomorrow")
     get_response("at 10am")
+    get_response("1 adult")
+    get_response("no children")
     replies = get_response("no")
     joined = " ".join(replies).lower()
     assert "search" in joined or "here's what i have" in joined

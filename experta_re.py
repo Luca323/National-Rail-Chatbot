@@ -5,6 +5,7 @@ from NLPU import (intention_by_keyword, extract_time_date, extract_stations,
 from PredictionModel import extract_routes, pd, predict_delay
 from datetime import datetime
 import collections
+import random, json
 import collections.abc
 for type_name in ['Mapping','MutableMapping','Iterable','MutableSet']:
     if not hasattr(collections, type_name):
@@ -48,6 +49,10 @@ def get_discount(railcard):
         return 1/3
     return 0
 
+def get_reply(intent):
+    with open("intentions.json") as f:
+        data = json.load(f)
+    return random.choice(data[intent]["responses"])
 
 class UserInput(Fact):
     text = Field(str, mandatory=True)
@@ -92,17 +97,30 @@ class BookingEngine(KnowledgeEngine):
 
     @Rule(Intent(value='greeting'), salience=100)
     def handle_greeting(self):
-        self.reply("Hello! I can help you find the cheapest train ticket.")
+        self.reply(get_reply("greeting"))
         self.retract_by_type(Intent)
 
     @Rule(Intent(value="thanks"), salience=100)
     def handle_thanks(self):
-        self.reply("You're welcome!")
+        self.reply(get_reply("thanks"))
+        self.retract_by_type(Intent)
+
+    @Rule(Intent(value="cancel"), salience=100)
+    def handle_cancel(self):
+        self.retract_by_type(Booking)
+        self.retract_by_type(DelayJourney)
+        self.retract_by_type(AwaitingConfirm)
+        self.retract_by_type(AskingFor)
+        self.retract_by_type(RailcardAsked)
+        self.retract_by_type(PassengersAsked)
+        self.retract_by_type(ChildrenAsked)
+        self.reply(get_reply("cancel"))
+        self.declare(Booking())
         self.retract_by_type(Intent)
 
     @Rule(Intent(value="goodbye"), salience=100)
     def handle_goodbye(self):
-        self.reply("")
+        self.reply(get_reply("goodbye"))
         self.declare(SessionDone())
         self.retract_by_type(Intent)
 
@@ -111,11 +129,18 @@ class BookingEngine(KnowledgeEngine):
         self.retract_by_type(Booking)
         self.retract_by_type(BookingComplete)
         self.retract_by_type(RailcardAsked)
+        self.retract_by_type(AskingFor)
+        self.retract_by_type(AwaitingConfirm)
+        self.retract_by_type(PassengersAsked)
+        self.retract_by_type(ChildrenAsked)
         self.declare(DelayJourney())
         self.retract_by_type(Intent)
 
-    @Rule(Intent(value="book"),NOT(DelayJourney()) , NOT(Booking()), salience=90)
+    @Rule(Intent(value="book"), NOT(Booking()), salience=90)
     def start_booking(self):
+        self.retract_by_type(DelayJourney)
+        self.retract_by_type(DelayPrediction)
+        self.retract_by_type(AskingFor)
         self.declare(Booking())
         self.retract_by_type(Intent)
 
@@ -126,6 +151,7 @@ class BookingEngine(KnowledgeEngine):
     )
     def extract_entities(self, ui, bk, text):
         updates = {}
+        handled = False
 
         #Ticket type
         if not bk["ticket_type"]:
@@ -156,9 +182,18 @@ class BookingEngine(KnowledgeEngine):
 
         if is_return_context:
             if parsed_date and not bk["return_date"]:
-                updates["return_date"] = parsed_date
+                if bk["date"] and parsed_date < bk["date"]:
+                    self.reply(f"Return date must be on or after the outbound date ({bk['date']}). What date would you like to return?")
+                    handled = True
+                else:
+                    updates["return_date"] = parsed_date
             if parsed_time and not bk["return_time"]:
-                updates["return_time"] = parsed_time
+                effective_return_date = updates.get("return_date", bk["return_date"])
+                if effective_return_date and bk["date"] and effective_return_date == bk["date"] and bk["time"] and parsed_time <= bk["time"]:
+                    self.reply(f"Return time must be after the outbound time ({bk['time']}) on the same day. What time would you like to return?")
+                    handled = True
+                else:
+                    updates["return_time"] = parsed_time
         else:
             if parsed_date and not bk["date"]:
                 updates["date"] = parsed_date
@@ -204,7 +239,12 @@ class BookingEngine(KnowledgeEngine):
         )
 
         if am:
-            updates["adults"] = int(am.group(1))
+            n = int(am.group(1))
+            if n > 9:
+                self.reply("Please enter 9 adults or less.")
+                handled = True
+            else:
+                updates["adults"] = n
 
         elif asking == "adults":
 
@@ -214,14 +254,24 @@ class BookingEngine(KnowledgeEngine):
             else:
                 m = re.search(r"\d+", text)
                 if m:
-                    updates["adults"] = int(m.group())
+                    n = int(m.group())
+                    if n > 9:
+                        self.reply("Please enter 9 adults or less.")
+                        handled = True
+                    else:
+                        updates["adults"] = n
         if no_children:
             updates["children"] = 0
             self.declare(ChildrenAsked())
 
         elif cm:
-            updates["children"] = int(cm.group(1))
-            self.declare(ChildrenAsked())
+            n = int(cm.group(1))
+            if n > 8:
+                self.reply("Please enter 8 child or less.")
+                handled = True
+            else:
+                updates["children"] = n
+                self.declare(ChildrenAsked())
 
         elif asking == "children":
             if re.search(r"\b(no|none|zero)\b", text, re.I):
@@ -230,16 +280,34 @@ class BookingEngine(KnowledgeEngine):
             else:
                 m = re.search(r"\d+", text)
                 if m:
-                    updates["children"] = int(m.group())
-                    self.declare(ChildrenAsked())
+                    n = int(m.group())
+                    if n > 8:
+                        self.reply("Please enter 8 child or less.")
+                        handled = True
+                    else:
+                        updates["children"] = n
+                        self.declare(ChildrenAsked())
 
-        if am or cm:
+        if ("adults" in updates or "children" in updates) and not any(isinstance(f, PassengersAsked) for f in self.facts.values()):
             self.declare(PassengersAsked())
+
+        #Reject bookings with zero passengers
+        new_adults = updates.get("adults", bk["adults"])
+        new_children = updates.get("children", bk["children"])
+        if ("adults" in updates or "children" in updates) and new_adults == 0 and new_children == 0:
+            self.reply("You need at least one passenger to make a booking. How many adults are travelling? (16 or over)")
+            updates.pop("adults", None)
+            updates.pop("children", None)
+            self.retract_by_type(ChildrenAsked)
+            self.retract_by_type(PassengersAsked)
+            self.retract_by_type(AskingFor)
+            self.declare(AskingFor(slot="adults"))
+            handled = True
 
         if updates:
             self.modify(bk, **updates)
             self.retract_by_type(AskingFor)
-        elif asking is not None:
+        elif asking is not None and not handled:
             prompt = SLOT_PROMPTS.get(asking) or RAILCARD_PROMPT
             self.reply(f"Sorry, I didn't understand that. {prompt if prompt else 'Could you please rephrase?'}")
 
@@ -713,7 +781,7 @@ class BookingEngine(KnowledgeEngine):
         self.retract(ui)
         self.retract_by_type(AwaitingConfirm)
 
-        if any(w in text.lower() for w in ("yes", "yeah", "sure", "ok", "confirm")):
+        if re.search(r"\b(yes|yeah|yep|yup|ok|okay|confirm)\b", text, re.I):
             result = self.search_and_present(bk)
             self.reply(result)
             self.reply("Can I help you with anything else?")
@@ -750,6 +818,7 @@ class BookingEngine(KnowledgeEngine):
 # start engine for GUI
 engine = BookingEngine()
 engine.reset()
+current_conversation_id = None
 
 def get_startup_msg():
     global current_conversation_id              #database integration

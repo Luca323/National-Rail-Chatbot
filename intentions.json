@@ -4,9 +4,9 @@
             "hi", "hello", "hey", "morning", "afternoon", "evening", "greet", "howdy"
         ],
         "responses": [
-            "Hello! I can help you find the cheapest train ticket. Where would you like to travel?",
-            "Hi there! Ready to find you a train. Where are you heading?",
-            "Hey! Let's find you a ticket. Where would you like to go?"
+            "Hello! I can help you book a ticket or check a delay.",
+            "Hi there! I can help with train bookings and delays - just say what you need.",
+            "Hey! Tell me if you want to book a ticket or check a delay."
         ]
     },
     "goodbye": {
@@ -47,8 +47,9 @@
             "cancel", "stop", "restart", "reset", "start", "again", "over", "wrong", "mistake"
         ],
         "responses": [
-            "No problem, let's start over. Where would you like to travel from?",
-            "Sure, let's try again. Where are you departing from?"
+            "No problem, let's start over.",
+            "Sure, let's try again.",
+            "Okay, starting fresh."
         ]
     },
     "help": {

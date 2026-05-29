@@ -28,11 +28,21 @@ def lem_and_clean(text):
 def intention_by_keyword(sentence):
     with open("intentions.json") as f:
         intentions = json.load(f)
+
+    #higher = more important, beats casual chit-chat
+    priority = {"goodbye": 5, "cancel": 4, "delay": 4, "book": 3,
+                "railcard": 2, "ticket_type": 2, "thanks": 1, "greeting": 0}
+
+    found = set()
     for word in lem_and_clean(sentence).split():
         for type_of_intention in intentions:
             if word in intentions[type_of_intention]["patterns"]:
-                return type_of_intention  # remove the print line
-    return None
+                found.add(type_of_intention)
+
+    if not found:
+        return None
+    #pick whichever matched intent has the highest priority
+    return max(found, key=lambda i: priority.get(i, 0))
 
 
 def extract_time_date(sentence):
@@ -214,6 +224,8 @@ def parse_time(text: str) -> str | None:
         hour = int(match.group(1))
         minute = int(match.group(2)) if match.group(2) else 0
         meridiem = match.group(3).lower()
+        if hour < 1 or hour > 12 or minute > 59:
+            return None
         if meridiem == "pm" and hour != 12:
             hour += 12
         elif meridiem == "am" and hour == 12:
@@ -278,12 +290,12 @@ railcards = {
         "senior"
     ],
 
-    "2together": [
+    "two together": [
         "two together railcard",
         "two together"
     ],
 
-    "veteran": [
+    "veterans": [
         "veterans railcard",
         "veteran railcard"
     ]
@@ -298,20 +310,24 @@ def railcard_choice(userInput):
 
     for code, phrases in railcards.items():
         for phrase in phrases:
-            if text in normalise_rc_input(phrase):
+            if normalise_rc_input(phrase) in text:
                 print("CODE: ", code)
                 return code
     return None
 
 def check_ticket(userInput):
-    userInput =userInput.lower()
+    userInput = userInput.lower()
 
-    ticket_types = ["open return", "one way", "return"]
-
-    for ticket in ticket_types:
-        if ticket in userInput:
-            print(f"Ticket type: {ticket}")
-            return ticket
+    ticket_type = [
+        ("open return", "open return"),
+        ("one way", "one way"),
+        ("single", "one way"),
+        ("return", "return"),
+    ]
+    for search, canonical in ticket_type:
+        if re.search(r"\b" + re.escape(search) + r"\b", userInput):
+            print(f"Ticket type: {canonical}")
+            return canonical
 
     return None
 
