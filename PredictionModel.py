@@ -219,6 +219,7 @@ def predict_delay(
         }])
 
         predicted_delay = model.predict(X)[0]
+        predicted_delay = min(float(predicted_delay), current_delay * 2) #Delay is capped at 2x current delay
 
     return round(float(predicted_delay), 2)
 
